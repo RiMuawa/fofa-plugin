@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      2.3.0
+// @version      2.4.0
 // @description  在 FOFA 结果页右键组件/产品/favicon/国旗/侧栏世界地图/服务器图标/IP/端口等元素，将该项取反（如 product!="HIKVISION-视频监控"、icon_hash!="-1940193079"、country!="DE"）追加到当前搜索语句并在新标签页打开；也支持包含、复制完整语句。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -18,7 +18,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '2.3.0';
+  const VER = '2.4.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -55,15 +55,46 @@
   const ensureNeg = (c) => negate(c) || c.replace(/^(\s*[A-Za-z_][\w.]*\s*)={1,2}(?!=)/, '$1!=');
   const ensurePos = (c) => c.replace(/^(\s*[A-Za-z_][\w.]*\s*)!=/, '$1=');
 
-  // FOFA 的搜索链接是“当前语句 && 新条件”，这里仅取出新增部分；
-  // 与当前语句完全相同（如分页链接）时返回 null
-  function stripCurrent(linkQuery, current) {
-    const cur = (current || '').trim();
-    if (cur && linkQuery.startsWith(cur)) {
-      const tail = linkQuery.slice(cur.length).replace(/^\s*&&\s*/, '').trim();
-      return tail || null;
+  // 顶层按 && 切分（跳过引号与括号内的 &&）
+  function splitTop(q) {
+    const parts = [];
+    let depth = 0, inStr = false, buf = '';
+    for (let i = 0; i < q.length; i++) {
+      const c = q[i];
+      if (inStr) { buf += c; if (c === '"') inStr = false; continue; }
+      if (c === '"') { inStr = true; buf += c; continue; }
+      if (c === '(') { depth++; buf += c; continue; }
+      if (c === ')') { depth--; buf += c; continue; }
+      if (depth === 0 && c === '&' && q[i + 1] === '&') { parts.push(buf.trim()); buf = ''; i++; continue; }
+      buf += c;
     }
-    return linkQuery;
+    parts.push(buf.trim());
+    return parts.filter(Boolean);
+  }
+
+  // 从链接语句中取出“新增的条件”。FOFA 组链接有三种形态：
+  //   1) cur && 新条件（前缀拼接）
+  //   2) (新条件 && 部分cur) && 其余cur（括号重组，常见于分类/时间过滤）
+  //   3) 仅重排（段集合相同 -> 无新增，如分页链接）
+  function extractNew(linkQuery, current) {
+    const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
+    const lq = norm(linkQuery);
+    const cur = norm(current || '');
+    if (!cur) return lq;
+    if (lq === cur) return null;
+    if (lq.startsWith(cur + ' && ')) return lq.slice(cur.length + 4).trim() || null;
+    const walk = (q) => {
+      const extra = [];
+      for (const s of splitTop(q)) {
+        if (cur.includes(s)) continue;
+        const inner = s.startsWith('(') && s.endsWith(')') ? s.slice(1, -1) : null;
+        if (inner !== null && cur.includes(norm(inner))) continue; // 只是加了层括号
+        if (inner !== null) { const r = walk(inner); if (r) return r; }   // 组内找新增
+        extra.push(s);
+      }
+      return extra.length === 1 ? extra[0] : null;
+    };
+    return walk(lq);
   }
 
   /* ---------------- 国名/协议名映射（划选文本与国旗兜底用） ---------------- */
@@ -131,8 +162,8 @@
       for (const a of box.querySelectorAll('a[href*="qbase64="]')) {
         const lq = queryFromUrl(a.href);
         if (!lq) continue;
-        const cond = stripCurrent(lq, currentQuery()) || lq;
-        if (/^\s*country\s*=/i.test(cond)) return cond;
+        const cond = extractNew(lq, currentQuery());
+        if (cond && /^\s*country\s*=/i.test(cond)) return cond;
         const m = /(^|&&\s*)country\s*=\s*("[^"]*"|\S+)/.exec(lq);
         if (m) return `country=${m[2]}`;
       }
@@ -200,7 +231,7 @@
     if (link) {
       const lq = queryFromUrl(link.href);
       if (lq) {
-        const cond = stripCurrent(lq, cur);
+        const cond = extractNew(lq, cur);
         if (cond) return { cur, cond: negate(cond) || `${guessField(link)}="${firstText(link).slice(0, MAX_TEXT_LEN)}"`, include: cond };
       }
     }

@@ -35,7 +35,14 @@
 
 ## 实现说明（基于 FOFA v5.5.11 实测 DOM）
 
-- FOFA 结果页各字段均为 `<a href="/result?qbase64=当前语句 && 字段=值">`，脚本解码后剥掉当前语句前缀、把 `=` 翻成 `!=` 再追加，因此值永远与 FOFA 自身搜索一致；
+- FOFA 结果页各字段均为 `<a href="/result?qbase64=...">` 链接，解码后剥掉当前语句、把 `=`/`==` 翻成 `!=` 再追加，因此值永远与 FOFA 自身搜索一致；
+- FOFA 组合链接有两种形态：`当前语句 && 新条件`（前缀拼接）与 `(新条件 && 部分当前语句) && 其余`（括号重组，常见于分类/时间过滤），脚本按顶层分段差集 + 括号内递归提取新增条件；
+- 运算符同时支持单等号（模糊 `country="US"`）与双等号（精确 `server=="nginx"`、`cert.subject.org=="..."`）；
 - favicon（`img.el-image__inner`）外层就是 icon_hash 链接，无需自行计算 hash；
 - 国旗（`img.hsxa-country-img`）本身是内联 SVG、alt 固定为 "country"，无任何国家信息，故从相邻的 country 链接取值；
 - 侧栏世界地图是 ECharts 画的 canvas（国家不是 DOM 元素，且页面未暴露 echarts 实例），采用悬停 tooltip 提取：右键时鼠标所在国家的 tooltip（“加拿大 : 9233”或"NO : 0"）必然可见，从中解析中文名或 ISO 代码。
+
+## 测试
+
+`node extract-test.js` —— 针对条件提取/取反的单元测试（含真实抓取的括号重组链接样本）。
+
