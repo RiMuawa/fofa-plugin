@@ -4,21 +4,22 @@
 
 ## 功能
 
-| 右键对象 | 生成的条件示例 | 来源 |
-|---|---|---|
-| 组件 / 产品链接 | `product!="HIKVISION-视频监控"` | 解码链接自身的 qbase64，值与点击该组件搜索的完全一致 |
-| favicon 图标 | `icon_hash!="-1940193079"` | FOFA 在图标外层自带 icon_hash 搜索链接，精确值 |
-| 国旗图片（结果行 / 侧栏统计） | `country!="DE"` | 就近取同一行/统计项里 FOFA 自带的 country 搜索链接 |
-| 侧栏世界地图上的国家 | `country!="CA"` | 右键时读取当前悬停的地图 tooltip（如“加拿大 : 9233”或"NO : 0"） |
-| 侧栏各排名条目（分类排名 / Server / 网站标题 / 证书组织 / 网站指纹 fid / 协议 / 端口…） | `server!="cloudflare"`、`cert.subject.org!="Let's Encrypt"` 等 | 解码条目自带链接的 qbase64；同时支持单等号（模糊）与双等号（精确 `==`）及带点字段名 |
-| 服务器图标 | `server="nginx"` | 图标所在锚点的文本 |
-| IP / 端口 / 城市 / ASN / org / domain / header_hash / TLS 版本等链接 | `port!="443"` 等 | 同组件链接，解码 qbase64 |
-| 划选文本 | `product!="选中文本"`（国名/协议名自动识别字段） | 选区 |
+| 右键对象 | 识别来源 |
+|---|---|
+| 组件 / 产品链接 | 解码链接自身的 qbase64 |
+| favicon 图标 | 图标外层自带的 icon_hash 搜索链接 |
+| 国旗图片（结果行 / 侧栏统计） | 相邻的 country 搜索链接 |
+| 侧栏世界地图上的国家 | 右键时悬停中的地图 tooltip（国家名 / ISO 代码） |
+| 侧栏「相关Icon」图标 | Vue 组件数据中的 icon_hash（按图标 base64 匹配条目，精确值） |
+| 侧栏各排名条目（分类 / Server / 网站标题 / 证书组织 / 网站指纹 / 协议 / 端口…） | 条目自带链接的 qbase64 |
+| 服务器图标 | 图标所在锚点的文本 |
+| IP / 端口 / 城市 / ASN / org / domain / header_hash / TLS 版本等链接 | 链接的 qbase64 |
+| 划选文本 | 选区内容（国名/协议名自动识别字段） |
 
-- 排除 = 将条件取反后追加：`当前语句 && product!="X"`
-- 菜单内条件可编辑，回车 = 排除并打开；「包含」在未编辑时沿用 FOFA 原生运算符（保留 `==` 精确匹配语义）
-- **只在识别到上述目标时才接管右键**，其余位置保持浏览器原生菜单
-- **Shift + 右键** = 任何时候强制使用原生菜单
+- 排除 = 将条件取反后追加到当前语句；菜单内条件可编辑，回车 = 排除并打开
+- 「包含」在未编辑时沿用 FOFA 原生运算符（保留 `==` 精确匹配语义）
+- **只在识别到上述目标时才接管右键**，其余位置保持浏览器原生菜单；**Shift + 右键** = 强制原生菜单
+- 新标签页经 `window.open` 打开，保留 opener 关系——Tree Style Tab 等树状标签插件会将其挂为当前标签的**子标签**
 - 页面加载后控制台（F12）会输出 `[FOFA排除搜索] v2.x.x 已加载`，右键无反应时先确认版本号与仓库一致
 
 ## 安装
@@ -31,18 +32,17 @@
 
 脚本开头的常量：
 
-- `OPEN_IN_BACKGROUND`：`true` 时新标签页在后台打开（便于连续排除多项）。
+- `OPEN_IN_BACKGROUND`：`true` 时新标签页在后台打开。注意：后台打开走 `GM_openInTab`，会丢失 opener 树状关系（前台打开才有）。
 
-## 实现说明（基于 FOFA v5.5.11 实测 DOM）
+## 实现说明（基于 FOFA v5.5 实测 DOM）
 
-- FOFA 结果页各字段均为 `<a href="/result?qbase64=...">` 链接，解码后剥掉当前语句、把 `=`/`==` 翻成 `!=` 再追加，因此值永远与 FOFA 自身搜索一致；
-- FOFA 组合链接有两种形态：`当前语句 && 新条件`（前缀拼接）与 `(新条件 && 部分当前语句) && 其余`（括号重组，常见于分类/时间过滤），脚本按顶层分段差集 + 括号内递归提取新增条件；
-- 运算符同时支持单等号（模糊 `country="US"`）与双等号（精确 `server=="nginx"`、`cert.subject.org=="..."`）；
-- favicon（`img.el-image__inner`）外层就是 icon_hash 链接，无需自行计算 hash；
-- 国旗（`img.hsxa-country-img`）本身是内联 SVG、alt 固定为 "country"，无任何国家信息，故从相邻的 country 链接取值；
-- 侧栏世界地图是 ECharts 画的 canvas（国家不是 DOM 元素，且页面未暴露 echarts 实例），采用悬停 tooltip 提取：右键时鼠标所在国家的 tooltip（“加拿大 : 9233”或"NO : 0"）必然可见，从中解析中文名或 ISO 代码。
+- 结果页各字段均为 `<a href="/result?qbase64=...">` 链接，解码后剥掉当前语句、把 `=`/`==` 翻成 `!=` 再追加，值与 FOFA 自身搜索完全一致；
+- FOFA 组合链接有两种形态：`当前语句 && 新条件`（前缀拼接）与 `(新条件 && 部分当前语句) && 其余`（括号重组，常见于分类/时间过滤），按顶层分段差集 + 括号内递归提取新增条件；运算符支持单等号（模糊）与双等号（精确），字段名支持带点（`cert.subject.org`）；
+- favicon（`img.el-image__inner`）外层就是 icon_hash 链接；
+- 国旗（`img.hsxa-country-img`）是内联 SVG、alt 固定为 "country"，从相邻 country 链接取值；
+- 世界地图是 ECharts canvas（国家非 DOM 元素、无实例句柄），用悬停 tooltip 提取；
+- 「相关Icon」无链接，图标数据在 Vue 组件 props（`keyWord="icon_hash"`, `items[]{key, imageBase64}`）里，从挂载容器 `__vue_app__` 沿 vnode 树下钻读取（Nuxt 根下为 Suspense，需走 `suspense.activeBranch`）；Tampermonkey 沙箱下经 `unsafeWindow` 访问页面世界。
 
 ## 测试
 
 `node extract-test.js` —— 针对条件提取/取反的单元测试（含真实抓取的括号重组链接样本）。
-

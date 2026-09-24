@@ -1,14 +1,15 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      2.4.0
-// @description  在 FOFA 结果页右键组件/产品/favicon/国旗/侧栏世界地图/服务器图标/IP/端口等元素，将该项取反（如 product!="HIKVISION-视频监控"、icon_hash!="-1940193079"、country!="DE"）追加到当前搜索语句并在新标签页打开；也支持包含、复制完整语句。Shift+右键 = 原生菜单
+// @version      2.5.0
+// @description  在 FOFA 结果页右键组件/产品/favicon/国旗/侧栏世界地图/相关Icon/服务器图标/IP/端口等元素，将该项取反（如 product!="HIKVISION-视频监控"、icon_hash!="-1940193079"、country!="DE"）追加到当前搜索语句并在新标签页打开；也支持包含、复制完整语句。新标签保留 opener 关系（Tree Style Tab 树状归属）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
 // @match        *://fofa.so/*
 // @match        *://*.fofa.so/*
 // @grant        GM_openInTab
 // @grant        GM_setClipboard
+// @grant        unsafeWindow
 // @noframes
 // @run-at       document-idle
 // ==/UserScript==
@@ -16,9 +17,9 @@
 (function () {
   'use strict';
 
-  const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开
+  const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '2.4.0';
+  const VER = '2.5.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -187,6 +188,77 @@
     return txt ? `server="${txt}"` : null;
   }
 
+  /* ---------- 侧栏“相关Icon”（Vue 数据提取，无副作用） ----------
+     图标没有链接，点击由路由跳到 (当前语句 && icon_hash=="hash")；
+     图标数据在 Vue 组件 props 里：keyWord="icon_hash", items[]{key=hash, imageBase64}。
+     Vue3 生产构建不在元素上暴露句柄，只能从挂载容器的 __vue_app__._container._vnode
+     沿组件树下钻（Nuxt 根下是 Suspense，内容在 suspense.activeBranch）。
+     Tampermonkey 沙箱读不到页面 expando，须先经 unsafeWindow 取页面世界的元素。 */
+
+  function vueWalkMatch(match) {
+    try {
+      const w = (typeof unsafeWindow !== 'undefined' && unsafeWindow) || window;
+      const doc = w.document;
+      const wrap = doc && doc.querySelector && doc.querySelector('.similar-icons-wrapper');
+      if (!wrap) return null;
+      let container = null;
+      for (let n = wrap; n; n = n.parentElement) {
+        if (n.__vue_app__) { container = n.__vue_app__._container || n; break; }
+      }
+      const root = container && container._vnode;
+      if (!root) return null;
+      let visited = 0;
+      const walk = (vnode, depth) => {
+        if (!vnode || typeof vnode !== 'object' || depth > 100 || visited > 6000) return undefined;
+        const inst = vnode.component;
+        if (inst) {
+          visited++;
+          let se = inst.subTree && inst.subTree.el;
+          if (se && (se.nodeType === 3 || se.nodeType === 8)) se = se.parentElement;
+          if (se && se.querySelectorAll && se.contains(wrap)) {
+            const r = match(inst, se);
+            if (r !== null && r !== undefined) return r;
+          }
+          return walk(inst.subTree, depth + 1);
+        }
+        if (vnode.suspense && vnode.suspense.activeBranch) return walk(vnode.suspense.activeBranch, depth + 1);
+        if (Array.isArray(vnode.children)) {
+          for (const c of vnode.children) {
+            if (c && typeof c === 'object') {
+              const r = walk(c, depth + 1);
+              if (r !== null && r !== undefined) return r;
+            }
+          }
+        }
+        return undefined;
+      };
+      return walk(root, 0);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function iconFromSidebar(t) {
+    const img = t.closest ? t.closest('.icon-item-wrapper img, .icon_hash-icon-list img, .similar-icons-wrapper img') : null;
+    if (!img) return null;
+    const m = /base64,([A-Za-z0-9+/=]+)/.exec(img.src || '');
+    if (!m) return null;
+    const b64 = m[1];
+    const hit = vueWalkMatch((inst, se) => {
+      if (!se.querySelector('.icon_hash-icon-list')) return null;
+      const p = inst.props || {};
+      if (p.keyWord !== 'icon_hash' || !Array.isArray(p.items)) return null;
+      for (const it of p.items) {
+        if (it && typeof it === 'object' && it.key !== undefined && typeof it.imageBase64 === 'string'
+          && it.imageBase64.length >= 64 && it.imageBase64.slice(0, 64) === b64.slice(0, 64)) {
+          return String(it.key);
+        }
+      }
+      return null;
+    });
+    return hit ? `icon_hash="${hit}"` : null;
+  }
+
   // 侧栏世界地图（ECharts 画的 canvas，国家不是 DOM 元素，拿不到图表实例）：
   // 右键时鼠标必然悬停在某个国家上，此刻地图自带的可见 tooltip 里就是国家名（如“加拿大 : 9233”或"NO : 0"）
   function countryFromMap(t) {
@@ -248,7 +320,11 @@
     const server = serverFromIcon(t);
     if (server) return { cur, cond: negate(server) || server, include: server };
 
-    // 5) 划选文本（国名/协议名/产品名）
+    // 5) 侧栏“相关Icon”图标（Vue 数据提取 icon_hash）
+    const sidebarIcon = iconFromSidebar(t);
+    if (sidebarIcon) return { cur, cond: negate(sidebarIcon) || sidebarIcon, include: sidebarIcon };
+
+    // 6) 划选文本（国名/协议名/产品名）
     const st = (window.getSelection ? String(window.getSelection()) : '').trim();
     if (st && st.length <= 120) {
       const low = st.toLowerCase();
@@ -266,11 +342,19 @@
 
   function openTab(query) {
     const url = `${location.origin}/result?qbase64=${encodeURIComponent(b64enc(query))}`;
-    if (typeof GM_openInTab === 'function') {
-      GM_openInTab(url, { active: !OPEN_IN_BACKGROUND });
-    } else {
-      window.open(url, '_blank');
+    // 默认经 window.open 打开：新标签携带 opener 关系，
+    // Tree Style Tab 等树状标签插件会把它挂为当前标签的子标签。
+    // （GM_openInTab 创建的标签没有 opener，会丢失树状归属）
+    if (OPEN_IN_BACKGROUND && typeof GM_openInTab === 'function') {
+      GM_openInTab(url, { active: false });
+      return;
     }
+    const w = (typeof unsafeWindow !== 'undefined' && unsafeWindow) || window;
+    try {
+      if (w.open(url, '_blank')) return;
+    } catch (e) { /* 弹窗被拦截时走 GM_openInTab */ }
+    if (typeof GM_openInTab === 'function') GM_openInTab(url, { active: true });
+    else window.open(url, '_blank');
   }
 
   function fallbackCopy(s, done) {
