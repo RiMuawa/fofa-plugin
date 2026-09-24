@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      2.2.0
+// @version      2.3.0
 // @description  在 FOFA 结果页右键组件/产品/favicon/国旗/侧栏世界地图/服务器图标/IP/端口等元素，将该项取反（如 product!="HIKVISION-视频监控"、icon_hash!="-1940193079"、country!="DE"）追加到当前搜索语句并在新标签页打开；也支持包含、复制完整语句。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -18,7 +18,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '2.2.0';
+  const VER = '2.3.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -46,12 +46,14 @@
 
   /* ---------------- 语句处理 ---------------- */
 
+  // FOFA 链接里既有单等号（模糊匹配 country="US"）也有双等号（精确匹配 server=="nginx"），
+  // 字段名可含点（cert.subject.org）；两种都取反为 !=
   function negate(cond) {
-    const m = /^\s*([A-Za-z_][\w]*)\s*=(?!=)\s*([\s\S]+?)\s*$/.exec(cond);
+    const m = /^\s*([A-Za-z_][\w.]*)\s*={1,2}(?!=)\s*([\s\S]+?)\s*$/.exec(cond);
     return m ? `${m[1]}!=${m[2]}` : null;
   }
-  const ensureNeg = (c) => negate(c) || c.replace(/^(\s*[A-Za-z_][\w]*\s*)=/, '$1!=');
-  const ensurePos = (c) => c.replace(/^(\s*[A-Za-z_][\w]*\s*)!=/, '$1=');
+  const ensureNeg = (c) => negate(c) || c.replace(/^(\s*[A-Za-z_][\w.]*\s*)={1,2}(?!=)/, '$1!=');
+  const ensurePos = (c) => c.replace(/^(\s*[A-Za-z_][\w.]*\s*)!=/, '$1=');
 
   // FOFA 的搜索链接是“当前语句 && 新条件”，这里仅取出新增部分；
   // 与当前语句完全相同（如分页链接）时返回 null
@@ -193,36 +195,36 @@
 
     const cur = currentQuery();
 
-    // 1) 带有 qbase64 的搜索链接（组件/产品/favicon(icon_hash)/国家名/IP/端口/地区…）
+    // 1) 带有 qbase64 的搜索链接（组件/产品/favicon(icon_hash)/国家名/IP/端口/地区/侧栏各排名…）
     const link = t.closest('a[href*="qbase64="]');
     if (link) {
       const lq = queryFromUrl(link.href);
       if (lq) {
         const cond = stripCurrent(lq, cur);
-        if (cond) return { cur, cond: negate(cond) || `${guessField(link)}="${firstText(link).slice(0, MAX_TEXT_LEN)}"` };
+        if (cond) return { cur, cond: negate(cond) || `${guessField(link)}="${firstText(link).slice(0, MAX_TEXT_LEN)}"`, include: cond };
       }
     }
 
     // 2) 国旗图片
     const country = countryFromFlag(t);
-    if (country) return { cur, cond: country };
+    if (country) return { cur, cond: negate(country) || country, include: country };
 
     // 3) 侧栏世界地图（依赖当前悬停的 tooltip）
     const mapCountry = countryFromMap(t);
-    if (mapCountry) return { cur, cond: mapCountry };
+    if (mapCountry) return { cur, cond: negate(mapCountry) || mapCountry, include: mapCountry };
 
     // 4) 服务器图标
     const server = serverFromIcon(t);
-    if (server) return { cur, cond: server };
+    if (server) return { cur, cond: negate(server) || server, include: server };
 
     // 5) 划选文本（国名/协议名/产品名）
     const st = (window.getSelection ? String(window.getSelection()) : '').trim();
     if (st && st.length <= 120) {
       const low = st.toLowerCase();
       const code = NAME2CODE[low];
-      if (code) return { cur, cond: `country="${code}"` };
-      if (PROTO_SET.has(low)) return { cur, cond: `protocol="${low}"` };
-      return { cur, cond: `product="${st}"` };
+      if (code) return { cur, cond: `country!="${code}"`, include: `country="${code}"` };
+      if (PROTO_SET.has(low)) return { cur, cond: `protocol!="${low}"`, include: `protocol="${low}"` };
+      return { cur, cond: `product!="${st}"`, include: `product="${st}"` };
     }
 
     // 其余一律不劫持，保持浏览器原生右键菜单
@@ -312,6 +314,8 @@
 
     const input = menu.querySelector('.fx-cond');
     input.value = cand.cond;
+    let edited = false;
+    input.addEventListener('input', () => { edited = true; });
 
     const getCond = () => input.value.replace(/\s+/g, ' ').trim();
     const compose = (cond) => (cand.cur ? `${cand.cur} && ${cond}` : cond);
@@ -319,7 +323,8 @@
     const doOpen = (mode) => {
       const cond = getCond();
       if (!cond) { input.focus(); return; }
-      const final = mode === 'include' ? ensurePos(cond) : ensureNeg(cond);
+      // 包含：未编辑时用链接里的原始条件（保留 FOFA 的 == 精确匹配语义）
+      const final = mode === 'include' ? (!edited && cand.include ? cand.include : ensurePos(cond)) : ensureNeg(cond);
       openTab(compose(final));
       hideMenu();
     };
