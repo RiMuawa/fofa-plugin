@@ -9,6 +9,7 @@
 | 组件 / 产品链接 | `product!="HIKVISION-视频监控"` | 解码链接自身的 qbase64，值与点击该组件搜索的完全一致 |
 | favicon 图标 | `icon_hash!="-1940193079"` | FOFA 在图标外层自带 icon_hash 搜索链接，精确值 |
 | 国旗图片（结果行 / 侧栏统计） | `country!="DE"` | 就近取同一行/统计项里 FOFA 自带的 country 搜索链接 |
+| 侧栏世界地图上的国家 | `country!="CA"` | 右键时读取当前悬停的地图 tooltip（如“加拿大 : 9233”或"NO : 0"） |
 | 服务器图标 | `server="nginx"` | 图标所在锚点的文本 |
 | IP / 端口 / 城市 / ASN / org / domain / header_hash / TLS 版本等链接 | `port!="443"` 等 | 同组件链接，解码 qbase64 |
 | 划选文本 | `product="选中文本"`（国名/协议名自动识别字段） | 选区 |
@@ -17,6 +18,7 @@
 - 菜单内条件可编辑，回车 = 排除并打开；另有「包含」「复制完整语句」
 - **只在识别到上述目标时才接管右键**，其余位置保持浏览器原生菜单
 - **Shift + 右键** = 任何时候强制使用原生菜单
+- 页面加载后控制台（F12）会输出 `[FOFA排除搜索] v2.x.x 已加载`，右键无反应时先确认版本号与仓库一致
 
 ## 安装
 
@@ -34,4 +36,5 @@
 
 - FOFA 结果页各字段均为 `<a href="/result?qbase64=当前语句 && 字段=值">`，脚本解码后剥掉当前语句前缀、把 `=` 翻成 `!=` 再追加，因此值永远与 FOFA 自身搜索一致；
 - favicon（`img.el-image__inner`）外层就是 icon_hash 链接，无需自行计算 hash；
-- 国旗（`img.hsxa-country-img`）本身是内联 SVG、alt 固定为 "country"，无任何国家信息，故从相邻的 country 链接取值。
+- 国旗（`img.hsxa-country-img`）本身是内联 SVG、alt 固定为 "country"，无任何国家信息，故从相邻的 country 链接取值；
+- 侧栏世界地图是 ECharts 画的 canvas（国家不是 DOM 元素，且页面未暴露 echarts 实例），采用悬停 tooltip 提取：右键时鼠标所在国家的 tooltip（“加拿大 : 9233”或"NO : 0"）必然可见，从中解析中文名或 ISO 代码。

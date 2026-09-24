@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      2.1.0
-// @description  在 FOFA 结果页右键组件/产品/favicon/国旗/服务器图标/IP/端口等元素，将该项取反（如 product!="HIKVISION-视频监控"、icon_hash!="-1940193079"、country!="DE"）追加到当前搜索语句并在新标签页打开；也支持包含、复制完整语句。Shift+右键 = 原生菜单
+// @version      2.2.0
+// @description  在 FOFA 结果页右键组件/产品/favicon/国旗/侧栏世界地图/服务器图标/IP/端口等元素，将该项取反（如 product!="HIKVISION-视频监控"、icon_hash!="-1940193079"、country!="DE"）追加到当前搜索语句并在新标签页打开；也支持包含、复制完整语句。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
 // @match        *://fofa.so/*
@@ -18,6 +18,9 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
+  const VER = '2.2.0';
+
+  console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
   let menu = null;
 
@@ -151,6 +154,32 @@
     return txt ? `server="${txt}"` : null;
   }
 
+  // 侧栏世界地图（ECharts 画的 canvas，国家不是 DOM 元素，拿不到图表实例）：
+  // 右键时鼠标必然悬停在某个国家上，此刻地图自带的可见 tooltip 里就是国家名（如“加拿大 : 9233”或"NO : 0"）
+  function countryFromMap(t) {
+    const canvas = t.closest ? t.closest('.hsxa-result-map canvas, .echarts canvas') : null;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const tips = [...document.querySelectorAll('div')].filter((d) => {
+      if (!d.offsetWidth || d.offsetHeight > 120) return false;
+      const s = getComputedStyle(d);
+      if (s.position !== 'absolute' || s.visibility === 'hidden' || parseFloat(s.opacity || '1') === 0) return false;
+      const r = d.getBoundingClientRect();
+      if (!(r.x < rect.right + 100 && r.right > rect.left - 100 && r.y < rect.bottom + 150 && r.bottom > rect.top - 150)) return false;
+      const txt = (d.textContent || '').trim();
+      return txt.length > 0 && txt.length <= 100;
+    });
+    for (const d of tips) {
+      const first = ((d.innerText || d.textContent || '').split('\n').map((x) => x.trim()).filter(Boolean)[0]) || '';
+      const name = first.split(/[:：]/)[0].replace(/[0-9,，.\s]+$/, '').trim();
+      if (!name) continue;
+      if (/^[A-Za-z]{2}$/.test(name)) return `country="${name.toUpperCase()}"`;
+      const code = NAME2CODE[name.toLowerCase()];
+      if (code) return `country="${code}"`;
+    }
+    return null;
+  }
+
   /* ---------------- 右键目标识别（基于 FOFA v5.5 实测 DOM） ----------------
      结果页各字段（产品/IP/端口/城市/ASN/org/domain/header_hash/favicon 的 icon_hash/国家名…）
      都是 <a href="/result?qbase64=当前语句&&字段=值">，直接解码即得精确条件。
@@ -178,11 +207,15 @@
     const country = countryFromFlag(t);
     if (country) return { cur, cond: country };
 
-    // 3) 服务器图标
+    // 3) 侧栏世界地图（依赖当前悬停的 tooltip）
+    const mapCountry = countryFromMap(t);
+    if (mapCountry) return { cur, cond: mapCountry };
+
+    // 4) 服务器图标
     const server = serverFromIcon(t);
     if (server) return { cur, cond: server };
 
-    // 4) 划选文本（国名/协议名/产品名）
+    // 5) 划选文本（国名/协议名/产品名）
     const st = (window.getSelection ? String(window.getSelection()) : '').trim();
     if (st && st.length <= 120) {
       const low = st.toLowerCase();
