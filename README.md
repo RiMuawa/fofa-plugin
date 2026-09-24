@@ -4,17 +4,19 @@
 
 ## 功能
 
-| 右键对象 | 生成的条件示例 |
-|---|---|
-| 组件 / 产品 / 侧边筛选链接 | `product!="HIKVISION-视频监控"`（从链接自身的 qbase64 提取，值与点击该组件搜索的完全一致） |
-| 国家旗帜图片 | `country="CN"`（从图片文件名 / class / alt 识别 ISO 代码，支持中英文国名） |
-| 协议图标 | `protocol="https"` |
-| 站点 favicon | `icon_hash="2460994409"`（在线计算 mmh3 hash） |
-| 划选文本 / 普通标签 | `product="选中文本"`（可识别国名、协议名） |
+| 右键对象 | 生成的条件示例 | 来源 |
+|---|---|---|
+| 组件 / 产品链接 | `product!="HIKVISION-视频监控"` | 解码链接自身的 qbase64，值与点击该组件搜索的完全一致 |
+| favicon 图标 | `icon_hash!="-1940193079"` | FOFA 在图标外层自带 icon_hash 搜索链接，精确值 |
+| 国旗图片（结果行 / 侧栏统计） | `country!="DE"` | 就近取同一行/统计项里 FOFA 自带的 country 搜索链接 |
+| 服务器图标 | `server="nginx"` | 图标所在锚点的文本 |
+| IP / 端口 / 城市 / ASN / org / domain / header_hash / TLS 版本等链接 | `port!="443"` 等 | 同组件链接，解码 qbase64 |
+| 划选文本 | `product="选中文本"`（国名/协议名自动识别字段） | 选区 |
 
 - 排除 = 将条件取反后追加：`当前语句 && product!="X"`
 - 菜单内条件可编辑，回车 = 排除并打开；另有「包含」「复制完整语句」
-- 未命中可识别对象时不劫持右键，保持浏览器原生菜单
+- **只在识别到上述目标时才接管右键**，其余位置保持浏览器原生菜单
+- **Shift + 右键** = 任何时候强制使用原生菜单
 
 ## 安装
 
@@ -28,7 +30,8 @@
 
 - `OPEN_IN_BACKGROUND`：`true` 时新标签页在后台打开（便于连续排除多项）。
 
-## 说明
+## 实现说明（基于 FOFA v5.5.11 实测 DOM）
 
-- favicon 跨域获取失败时自动回退 `GM_xmlhttpRequest`（需要 `@connect *` 权限）；
-- `icon_hash` 与 FOFA 官方一致：mmh3(base64(favicon 字节))，有符号 32 位整数。
+- FOFA 结果页各字段均为 `<a href="/result?qbase64=当前语句 && 字段=值">`，脚本解码后剥掉当前语句前缀、把 `=` 翻成 `!=` 再追加，因此值永远与 FOFA 自身搜索一致；
+- favicon（`img.el-image__inner`）外层就是 icon_hash 链接，无需自行计算 hash；
+- 国旗（`img.hsxa-country-img`）本身是内联 SVG、alt 固定为 "country"，无任何国家信息，故从相邻的 country 链接取值。
