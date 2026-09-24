@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      2.5.0
+// @version      2.5.1
 // @description  在 FOFA 结果页右键组件/产品/favicon/国旗/侧栏世界地图/相关Icon/服务器图标/IP/端口等元素，将该项取反（如 product!="HIKVISION-视频监控"、icon_hash!="-1940193079"、country!="DE"）追加到当前搜索语句并在新标签页打开；也支持包含、复制完整语句。新标签保留 opener 关系（Tree Style Tab 树状归属）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '2.5.0';
+  const VER = '2.5.1';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -134,22 +134,6 @@
     const attr = el.getAttribute && (el.getAttribute('title') || el.getAttribute('alt'));
     const raw = attr || el.innerText || el.textContent || '';
     return raw.split('\n').map((s) => s.trim()).filter(Boolean)[0] || '';
-  }
-
-  function guessField(el) {
-    const p = el && el.closest
-      ? el.closest('[class*="title"],[class*="domain"],[class*="host"],[class*="component"],[class*="product"],[class*="server"],[class*="org"],[class*="country"],[class*="protocol"],[class*="port"]')
-      : null;
-    const cls = p ? String(p.className || '') : '';
-    if (/title/i.test(cls)) return 'title';
-    if (/domain/i.test(cls)) return 'domain';
-    if (/host/i.test(cls)) return 'host';
-    if (/org/i.test(cls)) return 'org';
-    if (/countr/i.test(cls)) return 'country';
-    if (/protocol/i.test(cls)) return 'protocol';
-    if (/port/i.test(cls)) return 'port';
-    if (/server/i.test(cls)) return 'server';
-    return 'product';
   }
 
   // 国旗图片（img.hsxa-country-img，alt 固定为 "country"，本身无国家信息）：
@@ -304,7 +288,8 @@
       const lq = queryFromUrl(link.href);
       if (lq) {
         const cond = extractNew(lq, cur);
-        if (cond) return { cur, cond: negate(cond) || `${guessField(link)}="${firstText(link).slice(0, MAX_TEXT_LEN)}"`, include: cond };
+        // 取反失败（复杂条件/或组合）时原样显示真实条件供编辑，绝不猜测字段
+        if (cond) return { cur, cond: negate(cond) || cond, include: cond };
       }
     }
 
@@ -404,6 +389,7 @@
 #fofa-exclude-menu .fx-btns button:hover{background:#eef1f4}
 #fofa-exclude-menu .fx-primary{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
 #fofa-exclude-menu .fx-primary:hover{background:#ffab2e;border-color:#ffab2e}
+#fofa-exclude-menu .fx-foot{display:flex;justify-content:space-between;color:#8b949e;font-size:10px;margin-top:6px}
 #fofa-exclude-menu .fx-copy{padding:5px 8px}`;
     document.head.appendChild(st);
   }
@@ -425,7 +411,8 @@
         <button class="fx-primary" title="将该条件取反后追加到当前语句，并在新标签页打开">🚫 排除并打开</button>
         <button class="fx-inc" title="将该条件追加到当前语句，并在新标签页打开">➕ 包含</button>
         <button class="fx-copy" title="复制排除后的完整语句">📋</button>
-      </div>`;
+      </div>
+      <div class="fx-foot"><span>Shift+右键 = 原生菜单</span><span>v${VER}</span></div>`;
 
     const input = menu.querySelector('.fx-cond');
     input.value = cand.cond;
