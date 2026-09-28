@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      2.5.1
+// @version      2.6.0
 // @description  在 FOFA 结果页右键组件/产品/favicon/国旗/侧栏世界地图/相关Icon/服务器图标/IP/端口等元素，将该项取反（如 product!="HIKVISION-视频监控"、icon_hash!="-1940193079"、country!="DE"）追加到当前搜索语句并在新标签页打开；也支持包含、复制完整语句。新标签保留 opener 关系（Tree Style Tab 树状归属）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '2.5.1';
+  const VER = '2.6.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -96,6 +96,33 @@
       return extra.length === 1 ? extra[0] : null;
     };
     return walk(lq);
+  }
+
+  // 把语句拍平成叶子条件数组（递归剥括号）
+  function flattenLeaves(q) {
+    const out = [];
+    const rec = (s) => {
+      for (const part of splitTop(String(s).replace(/\s+/g, ' ').trim())) {
+        const p = part.trim();
+        if (p.startsWith('(') && p.endsWith(')')) rec(p.slice(1, -1));
+        else out.push(p);
+      }
+    };
+    rec(q);
+    return out;
+  }
+
+  // 自引用链接（当前语句已含该条件，如分类排名里当前选中的第一条）：
+  // 链接与当前语句相同（无新增条件）。按链接文本在语句里找到对应条件，
+  // “排除”语义应为就地取反（替换掉语句里的该条件），追加会自相矛盾
+  function selfCondition(lq, linkText) {
+    const txt = String(linkText || '').trim();
+    if (!txt) return null;
+    for (const leaf of flattenLeaves(lq)) {
+      const m = /^\s*([A-Za-z_][\w.]*)\s*={1,2}(?!=)\s*"([^"]*)"\s*$/.exec(leaf);
+      if (m && m[2] === txt) return leaf;
+    }
+    return null;
   }
 
   /* ---------------- 国名/协议名映射（划选文本与国旗兜底用） ---------------- */
@@ -290,6 +317,11 @@
         const cond = extractNew(lq, cur);
         // 取反失败（复杂条件/或组合）时原样显示真实条件供编辑，绝不猜测字段
         if (cond) return { cur, cond: negate(cond) || cond, include: cond };
+        // 自引用链接（无新增条件，如分类排名里当前选中的第一条）→ 就地取反
+        if (cur) {
+          const self = selfCondition(lq, firstText(link));
+          if (self) return { cur, cond: negate(self) || self, include: self, replace: self };
+        }
       }
     }
 
@@ -420,7 +452,16 @@
     input.addEventListener('input', () => { edited = true; });
 
     const getCond = () => input.value.replace(/\s+/g, ' ').trim();
-    const compose = (cond) => (cand.cur ? `${cand.cur} && ${cond}` : cond);
+    // 自引用条件（当前语句已含）：未编辑时就地替换该条件；否则追加
+    const compose = (cond) => {
+      if (!cand.cur) return cond;
+      if (cand.replace && !edited) return cand.cur.replace(cand.replace, cond);
+      return `${cand.cur} && ${cond}`;
+    };
+    if (cand.replace) {
+      const btn = menu.querySelector('.fx-primary');
+      btn.title = '当前语句已包含此条件：把它就地取反后打开（而非追加）';
+    }
 
     const doOpen = (mode) => {
       const cond = getCond();
