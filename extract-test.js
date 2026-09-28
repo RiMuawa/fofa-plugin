@@ -92,5 +92,13 @@ eq('同位数-仅第一名', pickTopSameDigits([{ name: 'X', count: '500' }]), [
 eq('同位数-空', pickTopSameDigits([]), []);
 eq('同位数-计数不可见', pickTopSameDigits([{ name: 'X', count: '*' }, { name: 'Y', count: '*' }]), ['X']);
 
+// ===== app= / product= 同义识别 =====
+const productFromQuery = eval('(0,' + grabFn('productFromQuery').replace('function productFromQuery', 'function') + ')');
+eq('app取产品', productFromQuery('app="HIKVISION-视频监控" && after="2026-08-24"'), 'HIKVISION-视频监控');
+eq('product取产品', productFromQuery('title="test" && product=="Apache"'), 'Apache');
+eq('app双等号', productFromQuery('(app=="Tengine") && port="443"'), 'Tengine');
+eq('无产品条件', productFromQuery('title="web" && country="CN"'), '');
+eq('title值内含app=不误判', productFromQuery('title="use app=here"'), '');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      3.2.0
+// @version      3.3.0
 // @description  FOFA 增强工具：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；指纹收藏库（记录搜索语句+IP数/厂商/型号/地区等，表格编辑、本地存储、JSON/CSV 导出）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.2.0';
+  const VER = '3.3.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -741,32 +741,40 @@
     return entries.filter((x) => digits(x.count) === d0).map((x) => x.name);
   }
 
-  function addFingerprint() {
+  // 查询语句里的 app= / product= 视为产品（FOFA 中两者同义）
+  function productFromQuery(q) {
+    const m = /(?:^|[^A-Za-z_.])(?:app|product)\s*={1,2}(?!=)\s*"([^"]+)"/.exec(q || '');
+    return m ? m[1] : '';
+  }
+
+  // 从当前页面抓一条指纹记录（当前语句 + 独立IP + 各排名信息）
+  function captureFingerprint() {
     const q = currentQuery();
-    if (!q) return false;
+    if (!q) return null;
     const c = grabCounts();
     // 骨架渲染期计数可能显示 0，视为未知存空
     const clean = (v) => (v && v !== '0' ? v : '');
     const nameM = /"([^"]+)"/.exec(q);
-    const arr = loadLib();
-    const rk = {
-      products: pickTopSameDigits(grabRankingEntries('产品')),
-      countries: pickTopSameDigits(grabRankingEntries('国家')),
-      server: (grabRankingEntries('Server')[0] || {}).name || '',
-      title: (grabRankingEntries('网站标题')[0] || {}).name || ''
-    };
-    arr.unshift({
+    return {
       id: Date.now(),
       name: nameM ? nameM[1] : '未命名',
       query: q,
       ip: clean(c.ip) || clean(c.total),
-      product: rk.products.join('、'),
-      region: rk.countries.join('、'),
-      server: rk.server,
-      title: rk.title,
+      // 产品优先取语句里的 app=/product=，没有对应内容时才用产品排名，再没有就留空
+      product: productFromQuery(q) || pickTopSameDigits(grabRankingEntries('产品')).join('、'),
+      region: pickTopSameDigits(grabRankingEntries('国家')).join('、'),
+      server: (grabRankingEntries('Server')[0] || {}).name || '',
+      title: (grabRankingEntries('网站标题')[0] || {}).name || '',
       vendor: '', model: '', note: '',
       ts: new Date().toLocaleString()
-    });
+    };
+  }
+
+  function addFingerprint() {
+    const entry = captureFingerprint();
+    if (!entry) return false;
+    const arr = loadLib();
+    arr.unshift(entry);
     saveLib(arr);
     return true;
   }
@@ -867,6 +875,7 @@
     panel.id = 'fofa-exclude-lib';
     if (lower) panel.classList.add('fx-l-lower'); // 首页：中间偏下
     renderLib(panel);
+    attachLibEvents(panel); // 只挂一次
     attachLibDrag(panel);
     applySavedLibPos(panel);
     document.documentElement.appendChild(panel);
@@ -877,11 +886,12 @@
     const rows = arr.map((it) => `<tr data-id="${it.id}">${LIB_FIELDS.map((f) =>
       `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
     ).join('')}<td class="fx-l-ops"><b class="fx-l-search" title="用此语句搜索">🔍</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
+    // 只负责渲染内容；事件在 openLib 里对 panel 挂一次（委托，重渲染不影响）
     panel.innerHTML = `
       <div class="fx-l-head">
         <span class="fx-l-title">🗂 指纹收藏库（${arr.length}）</span>
         <span class="fx-l-hbtns">
-          <button class="fx-l-add" title="手动新建一条空记录">＋ 新建</button>
+          <button class="fx-l-add" title="新建条目：结果页会自动填写当前语句与排名信息，否则为空白">＋ 新建</button>
           <button class="fx-l-expj" title="导出为 JSON 文件">导出 JSON</button>
           <button class="fx-l-expc" title="导出为 CSV 文件（Excel 可直接打开）">导出 CSV</button>
           <button class="fx-l-close">关闭</button>
@@ -892,7 +902,11 @@
         <tbody>${rows || `<tr><td colspan="${LIB_FIELDS.length + 1}" class="fx-l-empty">暂无条目：在结果页右键菜单点 ⭐ 收藏当前语句，或点「新建」手动添加</td></tr>`}</tbody>
       </table></div>
       <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 🔍 用该语句搜索 · 数据保存在浏览器本地（localStorage）</div>`;
+  }
 
+  // 事件只在 openLib 时对 panel 挂一次。绝不能放进 renderLib：
+  // renderLib 会被自身操作反复调用，重复挂载监听器会指数叠加（曾导致空条目爆炸、页面卡死）
+  function attachLibEvents(panel) {
     // 单元格编辑（focusout 冒泡，一次委托即可）
     panel.addEventListener('focusout', (e) => {
       const td = e.target.closest && e.target.closest('td[contenteditable][data-f]');
@@ -922,9 +936,14 @@
       }
       if (e.target.closest('.fx-l-add')) {
         const arr2 = loadLib();
-        const blank = { id: Date.now(), ts: new Date().toLocaleString() };
-        for (const f of LIB_FIELDS) blank[f.key] = '';
-        arr2.unshift(blank);
+        // 结果页上自动填写当前语句与排名信息；无当前语句（如首页）则为空白条目
+        const entry = captureFingerprint();
+        if (entry) arr2.unshift(entry);
+        else {
+          const blank = { id: Date.now(), ts: new Date().toLocaleString() };
+          for (const f of LIB_FIELDS) blank[f.key] = '';
+          arr2.unshift(blank);
+        }
         saveLib(arr2);
         renderLib(panel);
         const first = panel.querySelector('tbody td[contenteditable]');
@@ -942,6 +961,16 @@
       if (e.target.closest('.fx-l-close')) closeLib(true);
     });
   }
+
+  // 启动时清理“全部字段为空”的条目（修复历史监听器叠加 bug 产生的空行堆积）
+  (function purgeEmptyLib() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(LIB_KEY) || '[]');
+      if (!Array.isArray(arr)) return;
+      const meaningful = arr.filter((it) => it && LIB_FIELDS.some((f) => String(it[f.key] || '').trim() !== ''));
+      if (meaningful.length !== arr.length) localStorage.setItem(LIB_KEY, JSON.stringify(meaningful));
+    } catch (e) { /* ignore */ }
+  })();
 
   function ensureLibBtn() {
     if (document.getElementById('fofa-exclude-lib-btn')) return;
