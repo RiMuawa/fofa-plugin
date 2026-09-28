@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      2.7.0
+// @version      2.8.0
 // @description  在 FOFA 结果页右键组件/产品/favicon/国旗/侧栏世界地图/相关Icon/服务器图标/IP/端口等元素，将该项取反（如 product!="HIKVISION-视频监控"、icon_hash!="-1940193079"、country!="DE"）追加到当前搜索语句并在新标签页打开；也支持包含、复制完整语句。新标签保留 opener 关系（Tree Style Tab 树状归属）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '2.7.0';
+  const VER = '2.8.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -476,7 +476,9 @@
   font:12px/1.4 inherit;background:#f6f8fa;color:#24292f;white-space:nowrap}
 #fofa-exclude-stage-panel .fx-p-btns button:hover{background:#eef1f4}
 #fofa-exclude-stage-panel .fx-p-primary{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
-#fofa-exclude-stage-panel .fx-p-primary:hover{background:#ffab2e;border-color:#ffab2e}`;
+#fofa-exclude-stage-panel .fx-p-primary:hover{background:#ffab2e;border-color:#ffab2e}
+#fofa-exclude-rubber{position:fixed;z-index:2147483646;border:1.5px dashed #f1961f;background:rgba(241,150,31,.12);
+  pointer-events:none}`;
     document.head.appendChild(st);
   }
 
@@ -501,7 +503,7 @@
       </div>
       <div class="fx-foot">
         <label class="fx-curwin" title="勾选后在当前标签页内跳转，不再新开标签"><input type="checkbox">在本页打开</label>
-        <span>Shift+右键 = 原生菜单</span><span>v${VER}</span>
+        <span title="按住 Alt 用左键拖拽出一块区域，批量识别其中可排除的对象">Alt+拖拽=框选批量</span><span>v${VER}</span>
       </div>`;
 
     const input = menu.querySelector('.fx-cond');
@@ -643,6 +645,122 @@
   setInterval(ensureStagedBar, 2000); // SPA 重渲染后补回徽标
   ensureStagedBar();
 
+  /* ---------------- Alt + 左键拖拽：框选批量 ----------------
+     框住一块区域后，识别其中所有可排除对象（侧栏排名条目/结果行 favicon/
+     国旗/服务器图标/相关Icon），合并进批量面板，一次排除/包含。 */
+
+  let rubber = null;    // {x, y, engaged, overlay, rect}
+  let swallowClickUntil = 0;
+
+  function intersects(el, R) {
+    const r = el.getBoundingClientRect();
+    return r.left < R.r && r.right > R.l && r.top < R.b && r.bottom > R.t;
+  }
+
+  function collectInRect(R) {
+    const cur = currentQuery();
+    const out = [];
+    const push = (c) => {
+      c = String(c || '').replace(/\s+/g, ' ').trim();
+      if (!c || out.includes(c)) return;
+      if (c.includes('="-"') || c.includes('=="-"')) return; // FOFA 的未知值占位符
+      out.push(c);
+    };
+    // 1) 侧栏排名条目（分类/Server/国家/端口/证书组织…）
+    for (const a of document.querySelectorAll('.hsxa-meta-data-statistical-list a[href*="qbase64="]')) {
+      if (!intersects(a, R)) continue;
+      const lq = queryFromUrl(a.href);
+      if (!lq) continue;
+      const cond = extractNew(lq, cur) || selfCondition(lq, firstText(a));
+      if (cond) push(ensurePos(cond));
+    }
+    // 2) 结果行 favicon（icon_hash）
+    for (const img of document.querySelectorAll('img.el-image__inner')) {
+      if (!intersects(img, R)) continue;
+      const link = img.closest('a[href*="qbase64="]');
+      if (!link) continue;
+      const lq = queryFromUrl(link.href);
+      if (!lq) continue;
+      const cond = extractNew(lq, cur) || selfCondition(lq, firstText(link));
+      if (cond) push(ensurePos(cond));
+    }
+    // 3) 国旗
+    for (const img of document.querySelectorAll('img.hsxa-country-img')) {
+      if (intersects(img, R)) {
+        const c = countryFromFlag(img);
+        if (c) push(ensurePos(c));
+      }
+    }
+    // 4) 服务器图标
+    for (const sp of document.querySelectorAll('span.hsxa-server-icon')) {
+      if (intersects(sp, R)) {
+        const c = serverFromIcon(sp);
+        if (c) push(ensurePos(c));
+      }
+    }
+    // 5) 侧栏“相关Icon”
+    for (const img of document.querySelectorAll('.icon_hash-icon-list img')) {
+      if (intersects(img, R)) {
+        const c = iconFromSidebar(img);
+        if (c) push(ensurePos(c));
+      }
+    }
+    return out;
+  }
+
+  function rubberStop(cancelled) {
+    const r = rubber;
+    rubber = null;
+    const ov = document.getElementById('fofa-exclude-rubber');
+    if (ov) ov.remove();
+    document.documentElement.style.userSelect = '';
+    if (!r || cancelled || !r.engaged || !r.rect) return null;
+    // 只吞拖拽结束瞬间的误触点击（浏览器会在松开处补发 click），限时以免吃掉随后面板上的操作
+    swallowClickUntil = Date.now() + 350;
+    return r.rect;
+  }
+
+  document.addEventListener('mousedown', (e) => {
+    if (!e.altKey || e.button !== 0) return;
+    if ((menu && menu.contains(e.target)) || (e.target.closest && e.target.closest('#fofa-exclude-stage-bar,#fofa-exclude-stage-panel'))) return;
+    rubber = { x: e.clientX, y: e.clientY, engaged: false };
+  }, true);
+
+  document.addEventListener('mousemove', (e) => {
+    if (!rubber) return;
+    if (!rubber.engaged && Math.abs(e.clientX - rubber.x) < 6 && Math.abs(e.clientY - rubber.y) < 6) return;
+    if (!rubber.engaged) {
+      rubber.engaged = true;
+      const ov = document.createElement('div');
+      ov.id = 'fofa-exclude-rubber';
+      document.documentElement.appendChild(ov);
+      document.documentElement.style.userSelect = 'none';
+      rubber.overlay = ov;
+    }
+    e.preventDefault();
+    const l = Math.min(rubber.x, e.clientX), t = Math.min(rubber.y, e.clientY);
+    const w = Math.abs(e.clientX - rubber.x), h = Math.abs(e.clientY - rubber.y);
+    Object.assign(rubber.overlay.style, { left: l + 'px', top: t + 'px', width: w + 'px', height: h + 'px' });
+    rubber.rect = { l, t, r: l + w, b: t + h };
+  }, true);
+
+  document.addEventListener('mouseup', (e) => {
+    if (!rubber) return;
+    const rect = rubberStop(false);
+    if (!rect) return;
+    const hits = collectInRect(rect);
+    if (!hits.length) return;
+    const arr = loadStaged();
+    for (const c of hits) if (!arr.includes(c)) arr.push(c);
+    saveStaged(arr);
+    ensureStagedBar();
+    showStagePanel();
+  }, true);
+
+  document.addEventListener('click', (e) => {
+    if (Date.now() < swallowClickUntil) { swallowClickUntil = 0; e.preventDefault(); e.stopPropagation(); }
+  }, true);
+
   /* ---------------- 事件绑定 ---------------- */
 
   document.addEventListener('contextmenu', (e) => {
@@ -661,7 +779,7 @@
   }, true);
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { hideMenu(); hideStagePanel(); }
+    if (e.key === 'Escape') { hideMenu(); hideStagePanel(); rubberStop(true); }
   }, true);
 
   window.addEventListener('scroll', hideMenu, true);
