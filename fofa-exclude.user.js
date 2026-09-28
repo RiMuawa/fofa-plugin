@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      3.1.0
+// @version      3.2.0
 // @description  FOFA 增强工具：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；指纹收藏库（记录搜索语句+IP数/厂商/型号/地区等，表格编辑、本地存储、JSON/CSV 导出）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.1.0';
+  const VER = '3.2.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -488,7 +488,7 @@
   border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.22);overflow:hidden;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
 #fofa-exclude-lib.fx-l-lower{top:62%}
-#fofa-exclude-lib .fx-l-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eef1f4}
+#fofa-exclude-lib .fx-l-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eef1f4;cursor:move;user-select:none}
 #fofa-exclude-lib .fx-l-title{font-weight:600}
 #fofa-exclude-lib .fx-l-hbtns{display:flex;gap:6px}
 #fofa-exclude-lib .fx-l-hbtns button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
@@ -791,12 +791,74 @@
   }
 
   let libUserClosed = false; // 用户手动关过后，本页面会话不再自动弹出
+  const LIB_POS_KEY = 'fofa-lib-pos';
+  let libDrag = null; // {panel, dx, dy} 拖动状态（move/up 监听在 document 上，只注册一次）
 
   function closeLib(byUser) {
     if (byUser) libUserClosed = true;
     const p = document.getElementById('fofa-exclude-lib');
     if (p) p.remove();
   }
+
+  // 上次拖动后保存的位置（有则沿用，越界时夹回视口内）
+  function applySavedLibPos(panel) {
+    try {
+      const pos = JSON.parse(localStorage.getItem(LIB_POS_KEY) || 'null');
+      if (pos && typeof pos.l === 'number' && typeof pos.t === 'number') {
+        panel.style.left = Math.max(0, Math.min(pos.l, innerWidth - 100)) + 'px';
+        panel.style.top = Math.max(0, Math.min(pos.t, innerHeight - 40)) + 'px';
+        panel.style.transform = 'none';
+        return true;
+      }
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+
+  function resetLibPos(panel) {
+    try { localStorage.removeItem(LIB_POS_KEY); } catch (e) { /* ignore */ }
+    panel.style.left = '';
+    panel.style.top = '';
+    panel.style.transform = '';
+  }
+
+  function attachLibDrag(panel) {
+    // mousedown 委托在 panel 上（renderLib 重建内容不影响）；
+    // 标题栏为拖动手柄，按钮区域不触发
+    panel.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const head = e.target.closest && e.target.closest('.fx-l-head');
+      if (!head || (e.target.closest && e.target.closest('button'))) return;
+      const r = panel.getBoundingClientRect();
+      panel.style.left = r.left + 'px';
+      panel.style.top = r.top + 'px';
+      panel.style.transform = 'none';
+      libDrag = { panel, dx: e.clientX - r.left, dy: e.clientY - r.top };
+      e.preventDefault();
+    });
+    // 双击标题栏（非按钮）复位到默认居中
+    panel.addEventListener('dblclick', (e) => {
+      const head = e.target.closest && e.target.closest('.fx-l-head');
+      if (head && !(e.target.closest && e.target.closest('button'))) resetLibPos(panel);
+    });
+  }
+
+  document.addEventListener('mousemove', (e) => {
+    if (!libDrag) return;
+    const p = libDrag.panel;
+    const l = Math.max(60 - p.offsetWidth, Math.min(e.clientX - libDrag.dx, innerWidth - 60));
+    const t = Math.max(0, Math.min(e.clientY - libDrag.dy, innerHeight - 36));
+    p.style.left = l + 'px';
+    p.style.top = t + 'px';
+  }, true);
+
+  document.addEventListener('mouseup', () => {
+    if (!libDrag) return;
+    const p = libDrag.panel;
+    libDrag = null;
+    try {
+      localStorage.setItem(LIB_POS_KEY, JSON.stringify({ l: parseInt(p.style.left, 10) || 0, t: parseInt(p.style.top, 10) || 0 }));
+    } catch (e) { /* ignore */ }
+  }, true);
 
   function openLib(lower) {
     closeLib(false);
@@ -805,6 +867,8 @@
     panel.id = 'fofa-exclude-lib';
     if (lower) panel.classList.add('fx-l-lower'); // 首页：中间偏下
     renderLib(panel);
+    attachLibDrag(panel);
+    applySavedLibPos(panel);
     document.documentElement.appendChild(panel);
   }
 
