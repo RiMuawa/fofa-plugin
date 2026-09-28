@@ -100,5 +100,17 @@ eq('app双等号', productFromQuery('(app=="Tengine") && port="443"'), 'Tengine'
 eq('无产品条件', productFromQuery('title="web" && country="CN"'), '');
 eq('title值内含app=不误判', productFromQuery('title="use app=here"'), '');
 
+// ===== after= 识别 / 名称填写规则 =====
+const afterFromQuery = eval('(0,' + grabFn('afterFromQuery').replace('function afterFromQuery', 'function') + ')');
+eq('after识别', afterFromQuery('after="2026-08-24" && category="视频监控"'), '2026-08-24');
+eq('after在组合中', afterFromQuery('(app="Tengine") && after=="2026-09-01"'), '2026-09-01');
+eq('after无则空', afterFromQuery('app="Tengine"'), '');
+const pickName = eval('(0,' + grabFn('pickName').replace('function pickName', 'function') + ')');
+eq('名称-语句单产品', pickName('Tengine', [{ name: 'A', count: '1' }]), 'Tengine');
+eq('名称-排名仅一条', pickName('', [{ name: '唯一', count: '500' }]), '唯一');
+eq('名称-第一名独一档', pickName('', [{ name: '甲', count: '9000' }, { name: '乙', count: '900' }, { name: '丙', count: '80' }]), '甲');
+eq('名称-并列则留空', pickName('', [{ name: '甲', count: '3000' }, { name: '乙', count: '2000' }]), '');
+eq('名称-全无线索留空', pickName('', []), '');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

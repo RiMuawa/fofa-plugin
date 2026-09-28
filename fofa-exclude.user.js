@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      3.3.0
+// @version      3.4.0
 // @description  FOFA 增强工具：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；指纹收藏库（记录搜索语句+IP数/厂商/型号/地区等，表格编辑、本地存储、JSON/CSV 导出）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.3.0';
+  const VER = '3.4.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -690,15 +690,17 @@
   const LIB_KEY = 'fofa-fingerprints';
   const LIB_FIELDS = [
     { key: 'name', label: '名称', w: '80px' },
-    { key: 'query', label: '搜索语句', w: '190px', mono: true },
-    { key: 'ip', label: 'IP数', w: '65px' },
-    { key: 'product', label: '产品', w: '110px' },
-    { key: 'region', label: '国家', w: '100px' },
-    { key: 'server', label: 'Server', w: '75px' },
-    { key: 'title', label: 'Title', w: '110px' },
-    { key: 'vendor', label: '厂商', w: '65px' },
-    { key: 'model', label: '型号', w: '65px' },
-    { key: 'note', label: '备注', w: '90px' }
+    { key: 'query', label: '搜索语句', w: '180px', mono: true },
+    { key: 'ip', label: 'IP数', w: '60px' },
+    { key: 'product', label: '产品', w: '100px' },
+    { key: 'category', label: '类型', w: '90px' },
+    { key: 'region', label: '国家', w: '90px' },
+    { key: 'server', label: 'Server', w: '70px' },
+    { key: 'title', label: 'Title', w: '100px' },
+    { key: 'after', label: '收录时间', w: '80px' },
+    { key: 'vendor', label: '厂商', w: '60px' },
+    { key: 'model', label: '型号', w: '60px' },
+    { key: 'note', label: '备注', w: '80px' }
   ];
 
   function loadLib() {
@@ -747,6 +749,23 @@
     return m ? m[1] : '';
   }
 
+  // 查询语句里的 after=（收录时间）
+  function afterFromQuery(q) {
+    const m = /(?:^|[^A-Za-z_.])after\s*={1,2}(?!=)\s*"([^"]+)"/.exec(q || '');
+    return m ? m[1] : '';
+  }
+
+  // 名称填写规则：产品唯一（语句里只有一个 app=/product=），或产品排名里
+  // 第一名的计数位数严格多于其他（独一档）时填入，其余留空
+  function pickName(productFromQ, entries) {
+    if (productFromQ) return productFromQ;
+    if (!entries.length) return '';
+    if (entries.length === 1) return entries[0].name;
+    const digits = (v) => String(v).replace(/\D/g, '').length;
+    if (digits(entries[0].count) > digits((entries[1] || {}).count || '')) return entries[0].name;
+    return '';
+  }
+
   // 从当前页面抓一条指纹记录（当前语句 + 独立IP + 各排名信息）
   function captureFingerprint() {
     const q = currentQuery();
@@ -754,20 +773,24 @@
     const c = grabCounts();
     // 骨架渲染期计数可能显示 0，视为未知存空
     const clean = (v) => (v && v !== '0' ? v : '');
-    const nameM = /"([^"]+)"/.exec(q);
-    return {
+    const productEntries = grabRankingEntries('产品');
+    const entry = {
       id: Date.now(),
-      name: nameM ? nameM[1] : '未命名',
+      name: pickName(productFromQuery(q), productEntries),
       query: q,
       ip: clean(c.ip) || clean(c.total),
       // 产品优先取语句里的 app=/product=，没有对应内容时才用产品排名，再没有就留空
-      product: productFromQuery(q) || pickTopSameDigits(grabRankingEntries('产品')).join('、'),
+      product: productFromQuery(q) || pickTopSameDigits(productEntries).join('、'),
+      // 类型：分类排名里的名字（不带数量）
+      category: grabRankingEntries('分类').map((x) => x.name).join('、'),
       region: pickTopSameDigits(grabRankingEntries('国家')).join('、'),
       server: (grabRankingEntries('Server')[0] || {}).name || '',
       title: (grabRankingEntries('网站标题')[0] || {}).name || '',
+      after: afterFromQuery(q),
       vendor: '', model: '', note: '',
       ts: new Date().toLocaleString()
     };
+    return entry;
   }
 
   function addFingerprint() {
