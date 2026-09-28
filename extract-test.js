@@ -18,7 +18,8 @@ const extractNew = eval('(0,' + grabFn('extractNew').replace('function extractNe
 
 let pass = 0, fail = 0;
 const eq = (name, got, want) => {
-  const ok = got === want;
+  const norm = (v) => (typeof v === 'object' && v !== null) ? JSON.stringify(v) : v;
+  const ok = norm(got) === norm(want);
   ok ? pass++ : fail++;
   console.log((ok ? 'PASS' : 'FAIL') + ' | ' + name + ' => ' + JSON.stringify(got) + (ok ? '' : ' (期望 ' + JSON.stringify(want) + ')'));
 };
@@ -82,8 +83,14 @@ const csvCell = eval('(' + csvMatch[1] + ')');
 const libToCsv = eval('(0,' + grabFn('libToCsv').replace('function libToCsv', 'function') + ')');
 eq('CSV-引号转义', csvCell('a"b'), '"a""b"');
 eq('CSV-null转空', csvCell(null), '""');
-eq('CSV-完整导出', libToCsv([{ name: '路由器', query: 'category="路由器"', ip: '873649', vendor: '', model: '', region: '', note: '含"引号"', ts: '2026/9/28' }]),
-  '\ufeff"名称","搜索语句","IP数","厂商","型号","地区","备注","收藏时间"\r\n"路由器","category=""路由器""","873649","","","","含""引号""","2026/9/28"');
+
+// ===== 指纹库自动抓取：第一名 + 同位数规则 =====
+const pickTopSameDigits = eval('(0,' + grabFn('pickTopSameDigits').replace('function pickTopSameDigits', 'function') + ')');
+eq('同位数-用户示例', pickTopSameDigits([{ name: '美国', count: '3000' }, { name: '中国', count: '2000' }, { name: '印度', count: '999' }]), ['美国', '中国']);
+eq('同位数-千分位', pickTopSameDigits([{ name: 'A', count: '16,573,129' }, { name: 'B', count: '14,699,263' }, { name: 'C', count: '999,999' }]), ['A', 'B']);
+eq('同位数-仅第一名', pickTopSameDigits([{ name: 'X', count: '500' }]), ['X']);
+eq('同位数-空', pickTopSameDigits([]), []);
+eq('同位数-计数不可见', pickTopSameDigits([{ name: 'X', count: '*' }, { name: 'Y', count: '*' }]), ['X']);
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

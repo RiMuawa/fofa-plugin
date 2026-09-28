@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      3.0.0
+// @version      3.1.0
 // @description  FOFA 增强工具：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；指纹收藏库（记录搜索语句+IP数/厂商/型号/地区等，表格编辑、本地存储、JSON/CSV 导出）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.0.0';
+  const VER = '3.1.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -483,10 +483,11 @@
   border:1px solid #d0d7de;border-radius:16px;padding:4px 12px;cursor:pointer;user-select:none;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.2)}
 #fofa-exclude-lib-btn:hover{color:#f1961f;border-color:#f1961f}
-#fofa-exclude-lib{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483647;width:900px;
+#fofa-exclude-lib{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483647;width:1080px;
   max-width:94vw;max-height:84vh;display:flex;flex-direction:column;background:#fff;color:#24292f;border:1px solid #d0d7de;
   border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.22);overflow:hidden;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+#fofa-exclude-lib.fx-l-lower{top:62%}
 #fofa-exclude-lib .fx-l-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eef1f4}
 #fofa-exclude-lib .fx-l-title{font-weight:600}
 #fofa-exclude-lib .fx-l-hbtns{display:flex;gap:6px}
@@ -682,18 +683,22 @@
   ensureStagedBar();
 
   /* ---------------- 指纹收藏库 ----------------
-     记录搜索语句（指纹），附带 IP 条数（自动抓取）/厂商/型号/地区等自定义字段，
-     表格式编辑，localStorage 持久化，支持 JSON / CSV 导出。 */
+     记录搜索语句（指纹），自动抓取：独立IP数、产品排名（第一名+同位数）、
+     国家/地区排名（第一名+同位数，如 3000/2000/999 -> 前两者）、Server、Title；
+     另有厂商/型号/备注等手动字段。表格式编辑，localStorage 持久化，JSON/CSV 导出。 */
 
   const LIB_KEY = 'fofa-fingerprints';
   const LIB_FIELDS = [
-    { key: 'name', label: '名称', w: '90px' },
-    { key: 'query', label: '搜索语句', w: '220px', mono: true },
-    { key: 'ip', label: 'IP数', w: '70px' },
-    { key: 'vendor', label: '厂商', w: '90px' },
-    { key: 'model', label: '型号', w: '90px' },
-    { key: 'region', label: '地区', w: '90px' },
-    { key: 'note', label: '备注', w: '120px' }
+    { key: 'name', label: '名称', w: '80px' },
+    { key: 'query', label: '搜索语句', w: '190px', mono: true },
+    { key: 'ip', label: 'IP数', w: '65px' },
+    { key: 'product', label: '产品', w: '110px' },
+    { key: 'region', label: '国家', w: '100px' },
+    { key: 'server', label: 'Server', w: '75px' },
+    { key: 'title', label: 'Title', w: '110px' },
+    { key: 'vendor', label: '厂商', w: '65px' },
+    { key: 'model', label: '型号', w: '65px' },
+    { key: 'note', label: '备注', w: '90px' }
   ];
 
   function loadLib() {
@@ -714,6 +719,28 @@
     return { total: num(/([\d,，*]+)\s*条匹配结果/), ip: num(/([\d,，*]+)\s*条独立\s*IP/) };
   }
 
+  // 侧栏某个排名区块的条目 [{name, count}]（count 已去掉千分位逗号）
+  function grabRankingEntries(kw) {
+    const secs = Array.from(document.querySelectorAll('.hsxa-meta-data-statistical-list .hsxa-list-main'))
+      .filter((s) => s.offsetHeight > 0);
+    const sec = secs.find((x) => ((((x.querySelector('.summary-title-content') || {}).textContent) || '').indexOf(kw) >= 0));
+    if (!sec) return [];
+    return Array.from(sec.querySelectorAll('li')).map((li) => {
+      const a = li.querySelector('a');
+      const cnt = li.querySelector('.titleRight') || li.querySelector('span[style*="flex"]');
+      return { name: a ? a.textContent.trim() : '', count: (cnt ? cnt.textContent : '').replace(/[,，\s]/g, '') };
+    }).filter((x) => x.name);
+  }
+
+  // 第一名 + 与第一名计数位数相同的条目（如 美国3000/中国2000/印度999 -> 美国、中国）
+  function pickTopSameDigits(entries) {
+    if (!entries.length) return [];
+    const digits = (v) => String(v).replace(/\D/g, '').length;
+    const d0 = digits(entries[0].count);
+    if (!d0) return [entries[0].name]; // 游客等场景计数不可见
+    return entries.filter((x) => digits(x.count) === d0).map((x) => x.name);
+  }
+
   function addFingerprint() {
     const q = currentQuery();
     if (!q) return false;
@@ -722,12 +749,22 @@
     const clean = (v) => (v && v !== '0' ? v : '');
     const nameM = /"([^"]+)"/.exec(q);
     const arr = loadLib();
+    const rk = {
+      products: pickTopSameDigits(grabRankingEntries('产品')),
+      countries: pickTopSameDigits(grabRankingEntries('国家')),
+      server: (grabRankingEntries('Server')[0] || {}).name || '',
+      title: (grabRankingEntries('网站标题')[0] || {}).name || ''
+    };
     arr.unshift({
       id: Date.now(),
       name: nameM ? nameM[1] : '未命名',
       query: q,
       ip: clean(c.ip) || clean(c.total),
-      vendor: '', model: '', region: '', note: '',
+      product: rk.products.join('、'),
+      region: rk.countries.join('、'),
+      server: rk.server,
+      title: rk.title,
+      vendor: '', model: '', note: '',
       ts: new Date().toLocaleString()
     });
     saveLib(arr);
@@ -736,10 +773,10 @@
 
   const csvCell = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
   function libToCsv(arr) {
-    const head = ['名称', '搜索语句', 'IP数', '厂商', '型号', '地区', '备注', '收藏时间'];
+    const head = LIB_FIELDS.map((f) => f.label).concat(['收藏时间']);
     const lines = [head.map(csvCell).join(',')];
     for (const it of arr) {
-      lines.push([it.name, it.query, it.ip, it.vendor, it.model, it.region, it.note, it.ts].map(csvCell).join(','));
+      lines.push(LIB_FIELDS.map((f) => it[f.key]).concat([it.ts]).map(csvCell).join(','));
     }
     return '\ufeff' + lines.join('\r\n');
   }
@@ -753,16 +790,20 @@
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
 
-  function closeLib() {
+  let libUserClosed = false; // 用户手动关过后，本页面会话不再自动弹出
+
+  function closeLib(byUser) {
+    if (byUser) libUserClosed = true;
     const p = document.getElementById('fofa-exclude-lib');
     if (p) p.remove();
   }
 
-  function openLib() {
-    closeLib();
+  function openLib(lower) {
+    closeLib(false);
     injectStyle();
     const panel = document.createElement('div');
     panel.id = 'fofa-exclude-lib';
+    if (lower) panel.classList.add('fx-l-lower'); // 首页：中间偏下
     renderLib(panel);
     document.documentElement.appendChild(panel);
   }
@@ -784,7 +825,7 @@
       </div>
       <div class="fx-l-tablewrap"><table class="fx-l-table">
         <thead><tr>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="8" class="fx-l-empty">暂无条目：在右键菜单点 ⭐ 收藏当前语句，或点「新建」手动添加</td></tr>'}</tbody>
+        <tbody>${rows || `<tr><td colspan="${LIB_FIELDS.length + 1}" class="fx-l-empty">暂无条目：在结果页右键菜单点 ⭐ 收藏当前语句，或点「新建」手动添加</td></tr>`}</tbody>
       </table></div>
       <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 🔍 用该语句搜索 · 数据保存在浏览器本地（localStorage）</div>`;
 
@@ -817,7 +858,9 @@
       }
       if (e.target.closest('.fx-l-add')) {
         const arr2 = loadLib();
-        arr2.unshift({ id: Date.now(), name: '', query: '', ip: '', vendor: '', model: '', region: '', note: '', ts: new Date().toLocaleString() });
+        const blank = { id: Date.now(), ts: new Date().toLocaleString() };
+        for (const f of LIB_FIELDS) blank[f.key] = '';
+        arr2.unshift(blank);
         saveLib(arr2);
         renderLib(panel);
         const first = panel.querySelector('tbody td[contenteditable]');
@@ -832,7 +875,7 @@
         downloadFile('fofa-fingerprints.csv', libToCsv(loadLib()), 'text/csv');
         return;
       }
-      if (e.target.closest('.fx-l-close')) closeLib();
+      if (e.target.closest('.fx-l-close')) closeLib(true);
     });
   }
 
@@ -844,12 +887,20 @@
     b.title = '打开指纹收藏库';
     b.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (document.getElementById('fofa-exclude-lib')) closeLib(); else openLib();
+      if (document.getElementById('fofa-exclude-lib')) closeLib(true); else openLib();
     });
     document.documentElement.appendChild(b);
   }
   setInterval(ensureLibBtn, 2000); // SPA 重渲染后补回按钮
   ensureLibBtn();
+
+  // 首页（fofa.info 根路径）默认自动打开指纹库，居中偏下显示；
+  // 用户手动关闭过则本页面会话内不再自动弹出
+  setInterval(() => {
+    if (libUserClosed) return;
+    const home = location.pathname === '/' || location.pathname === '';
+    if (home && !document.getElementById('fofa-exclude-lib')) openLib(true);
+  }, 1500);
 
   /* ---------------- Alt + 左键拖拽：框选批量 ----------------
      框住一块区域后，识别其中所有可排除对象（侧栏排名条目/结果行 favicon/
@@ -983,11 +1034,11 @@
     const p = document.getElementById('fofa-exclude-stage-panel');
     if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-exclude-stage-bar'))) hideStagePanel();
     const lib = document.getElementById('fofa-exclude-lib');
-    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-exclude-lib-btn'))) closeLib();
+    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-exclude-lib-btn'))) closeLib(true);
   }, true);
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { hideMenu(); hideStagePanel(); rubberStop(true); closeLib(); }
+    if (e.key === 'Escape') { hideMenu(); hideStagePanel(); rubberStop(true); closeLib(true); }
   }, true);
 
   window.addEventListener('scroll', hideMenu, true);
