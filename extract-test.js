@@ -75,5 +75,15 @@ eq('批量包含-跳过已存在', applyBatch('title="web"', ['title="web"', 'po
   'title="web" && port="80"');
 eq('批量-无当前语句', applyBatch('', ['product="A"'], 'exclude'), 'product!="A"');
 
+// ===== 指纹库 CSV 导出 =====
+const csvMatch = /const csvCell = ([^;]+);/.exec(src);
+if (!csvMatch) throw new Error('csvCell not found');
+const csvCell = eval('(' + csvMatch[1] + ')');
+const libToCsv = eval('(0,' + grabFn('libToCsv').replace('function libToCsv', 'function') + ')');
+eq('CSV-引号转义', csvCell('a"b'), '"a""b"');
+eq('CSV-null转空', csvCell(null), '""');
+eq('CSV-完整导出', libToCsv([{ name: '路由器', query: 'category="路由器"', ip: '873649', vendor: '', model: '', region: '', note: '含"引号"', ts: '2026/9/28' }]),
+  '\ufeff"名称","搜索语句","IP数","厂商","型号","地区","备注","收藏时间"\r\n"路由器","category=""路由器""","873649","","","","含""引号""","2026/9/28"');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

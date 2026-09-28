@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      2.8.0
-// @description  在 FOFA 结果页右键组件/产品/favicon/国旗/侧栏世界地图/相关Icon/服务器图标/IP/端口等元素，将该项取反（如 product!="HIKVISION-视频监控"、icon_hash!="-1940193079"、country!="DE"）追加到当前搜索语句并在新标签页打开；也支持包含、复制完整语句。新标签保留 opener 关系（Tree Style Tab 树状归属）。Shift+右键 = 原生菜单
+// @version      3.0.0
+// @description  FOFA 增强工具：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；指纹收藏库（记录搜索语句+IP数/厂商/型号/地区等，表格编辑、本地存储、JSON/CSV 导出）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
 // @match        *://fofa.so/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '2.8.0';
+  const VER = '3.0.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -478,7 +478,33 @@
 #fofa-exclude-stage-panel .fx-p-primary{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
 #fofa-exclude-stage-panel .fx-p-primary:hover{background:#ffab2e;border-color:#ffab2e}
 #fofa-exclude-rubber{position:fixed;z-index:2147483646;border:1.5px dashed #f1961f;background:rgba(241,150,31,.12);
-  pointer-events:none}`;
+  pointer-events:none}
+#fofa-exclude-lib-btn{position:fixed;left:12px;bottom:12px;z-index:2147483646;background:#fff;color:#57606a;
+  border:1px solid #d0d7de;border-radius:16px;padding:4px 12px;cursor:pointer;user-select:none;
+  font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+#fofa-exclude-lib-btn:hover{color:#f1961f;border-color:#f1961f}
+#fofa-exclude-lib{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483647;width:900px;
+  max-width:94vw;max-height:84vh;display:flex;flex-direction:column;background:#fff;color:#24292f;border:1px solid #d0d7de;
+  border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.22);overflow:hidden;
+  font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+#fofa-exclude-lib .fx-l-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eef1f4}
+#fofa-exclude-lib .fx-l-title{font-weight:600}
+#fofa-exclude-lib .fx-l-hbtns{display:flex;gap:6px}
+#fofa-exclude-lib .fx-l-hbtns button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
+  cursor:pointer;font:12px/1.4 inherit;color:#24292f}
+#fofa-exclude-lib .fx-l-hbtns button:hover{background:#eef1f4}
+#fofa-exclude-lib .fx-l-tablewrap{overflow:auto;flex:1}
+#fofa-exclude-lib .fx-l-table{border-collapse:collapse;width:100%}
+#fofa-exclude-lib .fx-l-table th{position:sticky;top:0;background:#f6f8fa;color:#57606a;font-weight:600;text-align:left;
+  padding:6px 8px;border-bottom:1px solid #eef1f4;white-space:nowrap}
+#fofa-exclude-lib .fx-l-table td{padding:5px 8px;border-bottom:1px solid #f0f2f5;vertical-align:top;word-break:break-all}
+#fofa-exclude-lib .fx-l-table td[contenteditable]:focus{outline:1.5px solid #f1961f;outline-offset:-1.5px;background:#fffdf5}
+#fofa-exclude-lib .fx-l-mono{font-family:Consolas,Menlo,monospace;font-size:11px}
+#fofa-exclude-lib .fx-l-ops b{cursor:pointer;color:#8b949e;font-weight:400;margin-right:6px}
+#fofa-exclude-lib .fx-l-ops b.fx-l-search:hover{color:#f1961f}
+#fofa-exclude-lib .fx-l-ops b.fx-l-del:hover{color:#e5484d}
+#fofa-exclude-lib .fx-l-empty{color:#8b949e;text-align:center;padding:24px}
+#fofa-exclude-lib .fx-l-foot{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}`;
     document.head.appendChild(st);
   }
 
@@ -499,6 +525,7 @@
         <button class="fx-primary" title="将该条件取反后追加到当前语句，并在新标签页打开">🚫 排除并打开</button>
         <button class="fx-inc" title="将该条件追加到当前语句，并在新标签页打开">➕ 包含</button>
         <button class="fx-stage" title="暂存此条件，稍后在右下角批量排除/包含">📥 暂存</button>
+        <button class="fx-lib" title="收藏当前搜索语句到指纹库（自动记录 IP 条数，可补充厂商/型号/地区）">⭐</button>
         <button class="fx-copy" title="复制排除后的完整语句">📋</button>
       </div>
       <div class="fx-foot">
@@ -568,6 +595,15 @@
       const btn = ev.currentTarget;
       btn.textContent = '✓ 已暂存';
       setTimeout(hideMenu, 450);
+    });
+
+    // 收藏当前搜索语句到指纹库（自动记录 IP 条数）
+    menu.querySelector('.fx-lib').addEventListener('click', (ev) => {
+      const ok = addFingerprint();
+      const btn = ev.currentTarget;
+      btn.textContent = ok ? '✓' : '⚠';
+      setTimeout(() => { btn.textContent = '⭐'; }, 900);
+      if (ok) setTimeout(hideMenu, 450);
     });
   }
 
@@ -644,6 +680,176 @@
 
   setInterval(ensureStagedBar, 2000); // SPA 重渲染后补回徽标
   ensureStagedBar();
+
+  /* ---------------- 指纹收藏库 ----------------
+     记录搜索语句（指纹），附带 IP 条数（自动抓取）/厂商/型号/地区等自定义字段，
+     表格式编辑，localStorage 持久化，支持 JSON / CSV 导出。 */
+
+  const LIB_KEY = 'fofa-fingerprints';
+  const LIB_FIELDS = [
+    { key: 'name', label: '名称', w: '90px' },
+    { key: 'query', label: '搜索语句', w: '220px', mono: true },
+    { key: 'ip', label: 'IP数', w: '70px' },
+    { key: 'vendor', label: '厂商', w: '90px' },
+    { key: 'model', label: '型号', w: '90px' },
+    { key: 'region', label: '地区', w: '90px' },
+    { key: 'note', label: '备注', w: '120px' }
+  ];
+
+  function loadLib() {
+    try { const a = JSON.parse(localStorage.getItem(LIB_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function saveLib(arr) {
+    try { localStorage.setItem(LIB_KEY, JSON.stringify(arr)); } catch (e) { /* ignore */ }
+  }
+
+  // 从结果页头部抓 “N 条匹配结果 / (M 条独立IP)”（未登录时 FOFA 显示 *）
+  function grabCounts() {
+    const t = document.body ? (document.body.innerText || '') : '';
+    const num = (re) => {
+      const m = re.exec(t);
+      return m ? m[1].replace(/[,，\s]/g, '') : '';
+    };
+    return { total: num(/([\d,，*]+)\s*条匹配结果/), ip: num(/([\d,，*]+)\s*条独立\s*IP/) };
+  }
+
+  function addFingerprint() {
+    const q = currentQuery();
+    if (!q) return false;
+    const c = grabCounts();
+    // 骨架渲染期计数可能显示 0，视为未知存空
+    const clean = (v) => (v && v !== '0' ? v : '');
+    const nameM = /"([^"]+)"/.exec(q);
+    const arr = loadLib();
+    arr.unshift({
+      id: Date.now(),
+      name: nameM ? nameM[1] : '未命名',
+      query: q,
+      ip: clean(c.ip) || clean(c.total),
+      vendor: '', model: '', region: '', note: '',
+      ts: new Date().toLocaleString()
+    });
+    saveLib(arr);
+    return true;
+  }
+
+  const csvCell = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  function libToCsv(arr) {
+    const head = ['名称', '搜索语句', 'IP数', '厂商', '型号', '地区', '备注', '收藏时间'];
+    const lines = [head.map(csvCell).join(',')];
+    for (const it of arr) {
+      lines.push([it.name, it.query, it.ip, it.vendor, it.model, it.region, it.note, it.ts].map(csvCell).join(','));
+    }
+    return '\ufeff' + lines.join('\r\n');
+  }
+
+  function downloadFile(name, content, type) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], { type }));
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
+  function closeLib() {
+    const p = document.getElementById('fofa-exclude-lib');
+    if (p) p.remove();
+  }
+
+  function openLib() {
+    closeLib();
+    injectStyle();
+    const panel = document.createElement('div');
+    panel.id = 'fofa-exclude-lib';
+    renderLib(panel);
+    document.documentElement.appendChild(panel);
+  }
+
+  function renderLib(panel) {
+    const arr = loadLib();
+    const rows = arr.map((it) => `<tr data-id="${it.id}">${LIB_FIELDS.map((f) =>
+      `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
+    ).join('')}<td class="fx-l-ops"><b class="fx-l-search" title="用此语句搜索">🔍</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
+    panel.innerHTML = `
+      <div class="fx-l-head">
+        <span class="fx-l-title">🗂 指纹收藏库（${arr.length}）</span>
+        <span class="fx-l-hbtns">
+          <button class="fx-l-add" title="手动新建一条空记录">＋ 新建</button>
+          <button class="fx-l-expj" title="导出为 JSON 文件">导出 JSON</button>
+          <button class="fx-l-expc" title="导出为 CSV 文件（Excel 可直接打开）">导出 CSV</button>
+          <button class="fx-l-close">关闭</button>
+        </span>
+      </div>
+      <div class="fx-l-tablewrap"><table class="fx-l-table">
+        <thead><tr>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="8" class="fx-l-empty">暂无条目：在右键菜单点 ⭐ 收藏当前语句，或点「新建」手动添加</td></tr>'}</tbody>
+      </table></div>
+      <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 🔍 用该语句搜索 · 数据保存在浏览器本地（localStorage）</div>`;
+
+    // 单元格编辑（focusout 冒泡，一次委托即可）
+    panel.addEventListener('focusout', (e) => {
+      const td = e.target.closest && e.target.closest('td[contenteditable][data-f]');
+      if (!td) return;
+      const tr = td.closest('tr');
+      const arr2 = loadLib();
+      const it = arr2.find((x) => String(x.id) === tr.dataset.id);
+      if (!it) return;
+      it[td.dataset.f] = td.innerText.replace(/\u00a0/g, ' ').trim();
+      saveLib(arr2);
+    });
+
+    panel.addEventListener('click', (e) => {
+      const del = e.target.closest && e.target.closest('.fx-l-del');
+      if (del) {
+        const id = del.closest('tr').dataset.id;
+        saveLib(loadLib().filter((x) => String(x.id) !== id));
+        renderLib(panel);
+        return;
+      }
+      const search = e.target.closest && e.target.closest('.fx-l-search');
+      if (search) {
+        const id = search.closest('tr').dataset.id;
+        const it = loadLib().find((x) => String(x.id) === id);
+        if (it && it.query) openTab(it.query);
+        return;
+      }
+      if (e.target.closest('.fx-l-add')) {
+        const arr2 = loadLib();
+        arr2.unshift({ id: Date.now(), name: '', query: '', ip: '', vendor: '', model: '', region: '', note: '', ts: new Date().toLocaleString() });
+        saveLib(arr2);
+        renderLib(panel);
+        const first = panel.querySelector('tbody td[contenteditable]');
+        if (first) { first.focus(); }
+        return;
+      }
+      if (e.target.closest('.fx-l-expj')) {
+        downloadFile('fofa-fingerprints.json', JSON.stringify(loadLib(), null, 2), 'application/json');
+        return;
+      }
+      if (e.target.closest('.fx-l-expc')) {
+        downloadFile('fofa-fingerprints.csv', libToCsv(loadLib()), 'text/csv');
+        return;
+      }
+      if (e.target.closest('.fx-l-close')) closeLib();
+    });
+  }
+
+  function ensureLibBtn() {
+    if (document.getElementById('fofa-exclude-lib-btn')) return;
+    const b = document.createElement('div');
+    b.id = 'fofa-exclude-lib-btn';
+    b.textContent = '🗂 指纹库';
+    b.title = '打开指纹收藏库';
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (document.getElementById('fofa-exclude-lib')) closeLib(); else openLib();
+    });
+    document.documentElement.appendChild(b);
+  }
+  setInterval(ensureLibBtn, 2000); // SPA 重渲染后补回按钮
+  ensureLibBtn();
 
   /* ---------------- Alt + 左键拖拽：框选批量 ----------------
      框住一块区域后，识别其中所有可排除对象（侧栏排名条目/结果行 favicon/
@@ -776,10 +982,12 @@
     if (menu && !menu.contains(e.target)) hideMenu();
     const p = document.getElementById('fofa-exclude-stage-panel');
     if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-exclude-stage-bar'))) hideStagePanel();
+    const lib = document.getElementById('fofa-exclude-lib');
+    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-exclude-lib-btn'))) closeLib();
   }, true);
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { hideMenu(); hideStagePanel(); rubberStop(true); }
+    if (e.key === 'Escape') { hideMenu(); hideStagePanel(); rubberStop(true); closeLib(); }
   }, true);
 
   window.addEventListener('scroll', hideMenu, true);
