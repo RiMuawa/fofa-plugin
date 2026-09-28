@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      2.6.0
+// @version      2.7.0
 // @description  在 FOFA 结果页右键组件/产品/favicon/国旗/侧栏世界地图/相关Icon/服务器图标/IP/端口等元素，将该项取反（如 product!="HIKVISION-视频监控"、icon_hash!="-1940193079"、country!="DE"）追加到当前搜索语句并在新标签页打开；也支持包含、复制完整语句。新标签保留 opener 关系（Tree Style Tab 树状归属）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '2.6.0';
+  const VER = '2.7.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -355,10 +355,41 @@
     return null;
   }
 
-  /* ---------------- 打开 / 复制 ---------------- */
+  /* ---------------- 打开 / 复制 / 批量暂存 ---------------- */
+
+  const STAGE_KEY = 'fofa-exclude-staged';
+  const CURWIN_KEY = 'fofa-exclude-current';
+
+  function loadStaged() {
+    try { const a = JSON.parse(sessionStorage.getItem(STAGE_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function saveStaged(arr) {
+    try { sessionStorage.setItem(STAGE_KEY, JSON.stringify(arr)); } catch (e) { /* ignore */ }
+  }
+  function openInCurrent() {
+    try { return sessionStorage.getItem(CURWIN_KEY) === '1'; } catch (e) { return false; }
+  }
+
+  // 批量应用：当前语句里已存在的条件就地取反（排除模式），其余追加；包含模式跳过已存在
+  function applyBatch(cur, conds, mode) {
+    let q = (cur || '').trim();
+    for (const c of conds) {
+      const clean = String(c).replace(/\s+/g, ' ').trim();
+      if (!clean) continue;
+      if (q.includes(clean)) {
+        if (mode === 'exclude') q = q.replace(clean, negate(clean) || clean);
+        continue;
+      }
+      const piece = mode === 'exclude' ? (negate(clean) || clean) : clean;
+      q = q ? q + ' && ' + piece : piece;
+    }
+    return q;
+  }
 
   function openTab(query) {
     const url = `${location.origin}/result?qbase64=${encodeURIComponent(b64enc(query))}`;
+    if (openInCurrent()) { location.assign(url); return; }
     // 默认经 window.open 打开：新标签携带 opener 关系，
     // Tree Style Tab 等树状标签插件会把它挂为当前标签的子标签。
     // （GM_openInTab 创建的标签没有 opener，会丢失树状归属）
@@ -421,8 +452,31 @@
 #fofa-exclude-menu .fx-btns button:hover{background:#eef1f4}
 #fofa-exclude-menu .fx-primary{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
 #fofa-exclude-menu .fx-primary:hover{background:#ffab2e;border-color:#ffab2e}
-#fofa-exclude-menu .fx-foot{display:flex;justify-content:space-between;color:#8b949e;font-size:10px;margin-top:6px}
-#fofa-exclude-menu .fx-copy{padding:5px 8px}`;
+#fofa-exclude-menu .fx-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;color:#8b949e;font-size:10px;margin-top:6px}
+#fofa-exclude-menu .fx-copy,#fofa-exclude-menu .fx-stage{padding:5px 8px}
+#fofa-exclude-menu .fx-curwin{display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none}
+#fofa-exclude-menu .fx-curwin input{margin:0;accent-color:#f1961f}
+#fofa-exclude-stage-bar{position:fixed;right:12px;bottom:12px;z-index:2147483646;background:#f1961f;color:#fff;border-radius:16px;
+  padding:4px 12px;font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer;
+  box-shadow:0 4px 14px rgba(0,0,0,.28);user-select:none}
+#fofa-exclude-stage-bar:hover{background:#ffab2e}
+#fofa-exclude-stage-panel{position:fixed;right:12px;bottom:48px;z-index:2147483647;width:380px;box-sizing:border-box;
+  background:#fff;color:#24292f;border:1px solid #d0d7de;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);padding:8px;
+  font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+#fofa-exclude-stage-panel .fx-p-title{font-weight:600;color:#57606a;margin-bottom:6px}
+#fofa-exclude-stage-panel .fx-p-list{max-height:200px;overflow:auto}
+#fofa-exclude-stage-panel .fx-p-item{display:flex;align-items:center;gap:6px;padding:3px 4px;border-radius:4px}
+#fofa-exclude-stage-panel .fx-p-item:hover{background:#f6f8fa}
+#fofa-exclude-stage-panel .fx-p-item span{flex:1;font-family:Consolas,Menlo,monospace;font-size:11px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+#fofa-exclude-stage-panel .fx-p-item b{cursor:pointer;color:#8b949e;font-weight:400;padding:0 4px}
+#fofa-exclude-stage-panel .fx-p-item b:hover{color:#e5484d}
+#fofa-exclude-stage-panel .fx-p-btns{display:flex;gap:6px;margin-top:8px}
+#fofa-exclude-stage-panel .fx-p-btns button{border:1px solid #d0d7de;border-radius:6px;padding:5px 8px;cursor:pointer;
+  font:12px/1.4 inherit;background:#f6f8fa;color:#24292f;white-space:nowrap}
+#fofa-exclude-stage-panel .fx-p-btns button:hover{background:#eef1f4}
+#fofa-exclude-stage-panel .fx-p-primary{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
+#fofa-exclude-stage-panel .fx-p-primary:hover{background:#ffab2e;border-color:#ffab2e}`;
     document.head.appendChild(st);
   }
 
@@ -442,14 +496,24 @@
       <div class="fx-btns">
         <button class="fx-primary" title="将该条件取反后追加到当前语句，并在新标签页打开">🚫 排除并打开</button>
         <button class="fx-inc" title="将该条件追加到当前语句，并在新标签页打开">➕ 包含</button>
+        <button class="fx-stage" title="暂存此条件，稍后在右下角批量排除/包含">📥 暂存</button>
         <button class="fx-copy" title="复制排除后的完整语句">📋</button>
       </div>
-      <div class="fx-foot"><span>Shift+右键 = 原生菜单</span><span>v${VER}</span></div>`;
+      <div class="fx-foot">
+        <label class="fx-curwin" title="勾选后在当前标签页内跳转，不再新开标签"><input type="checkbox">在本页打开</label>
+        <span>Shift+右键 = 原生菜单</span><span>v${VER}</span>
+      </div>`;
 
     const input = menu.querySelector('.fx-cond');
     input.value = cand.cond;
     let edited = false;
     input.addEventListener('input', () => { edited = true; });
+
+    const curwin = menu.querySelector('.fx-curwin input');
+    curwin.checked = openInCurrent();
+    curwin.addEventListener('change', () => {
+      try { sessionStorage.setItem(CURWIN_KEY, curwin.checked ? '1' : '0'); } catch (e) { /* ignore */ }
+    });
 
     const getCond = () => input.value.replace(/\s+/g, ' ').trim();
     // 自引用条件（当前语句已含）：未编辑时就地替换该条件；否则追加
@@ -490,7 +554,94 @@
     menu.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + 'px';
     input.focus();
     if (cand.cond) input.select();
+
+    // 暂存：存为包含形式（=），批量应用时再决定取反与否
+    menu.querySelector('.fx-stage').addEventListener('click', (ev) => {
+      const cond = ensurePos(getCond());
+      if (!cond) { input.focus(); return; }
+      const arr = loadStaged();
+      if (!arr.includes(cond)) arr.push(cond);
+      saveStaged(arr);
+      ensureStagedBar();
+      const btn = ev.currentTarget;
+      btn.textContent = '✓ 已暂存';
+      setTimeout(hideMenu, 450);
+    });
   }
+
+  /* ---------------- 批量暂存：右下角徽标 + 面板 ---------------- */
+
+  function hideStagePanel() {
+    const p = document.getElementById('fofa-exclude-stage-panel');
+    if (p) p.remove();
+  }
+
+  function ensureStagedBar() {
+    const n = loadStaged().length;
+    let bar = document.getElementById('fofa-exclude-stage-bar');
+    if (!n) {
+      if (bar) bar.remove();
+      hideStagePanel();
+      return;
+    }
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'fofa-exclude-stage-bar';
+      bar.title = '已暂存的条件，点击批量排除/包含';
+      bar.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const p = document.getElementById('fofa-exclude-stage-panel');
+        if (p) hideStagePanel(); else showStagePanel();
+      });
+      document.documentElement.appendChild(bar);
+    }
+    bar.textContent = '📥 ' + n;
+  }
+
+  function showStagePanel() {
+    hideStagePanel();
+    injectStyle();
+    const arr = loadStaged();
+    const panel = document.createElement('div');
+    panel.id = 'fofa-exclude-stage-panel';
+    panel.innerHTML = `
+      <div class="fx-p-title">已暂存 ${arr.length} 个条件（排除时已存在于当前语句的会被就地取反）</div>
+      <div class="fx-p-list">${arr.map((c, i) =>
+        `<div class="fx-p-item"><span title="${esc(c)}">${esc(c)}</span><b data-i="${i}" title="移除">×</b></div>`
+      ).join('')}</div>
+      <div class="fx-p-btns">
+        <button class="fx-p-primary" title="把全部暂存条件取反后并入当前语句并打开">🚫 全部排除并打开</button>
+        <button class="fx-p-inc" title="把全部暂存条件并入当前语句并打开">➕ 全部包含</button>
+        <button class="fx-p-clear" title="清空暂存">清空</button>
+      </div>`;
+
+    panel.addEventListener('click', (e) => {
+      const rm = e.target.closest && e.target.closest('.fx-p-item b');
+      if (rm) {
+        const a = loadStaged();
+        a.splice(Number(rm.dataset.i), 1);
+        saveStaged(a);
+        ensureStagedBar();
+        if (a.length) showStagePanel(); else hideStagePanel();
+        return;
+      }
+      const apply = (mode) => {
+        const q = applyBatch(currentQuery(), loadStaged(), mode);
+        saveStaged([]);
+        ensureStagedBar();
+        hideStagePanel();
+        if (q) openTab(q);
+      };
+      if (e.target.closest('.fx-p-primary')) apply('exclude');
+      else if (e.target.closest('.fx-p-inc')) apply('include');
+      else if (e.target.closest('.fx-p-clear')) { saveStaged([]); ensureStagedBar(); }
+    });
+
+    document.documentElement.appendChild(panel);
+  }
+
+  setInterval(ensureStagedBar, 2000); // SPA 重渲染后补回徽标
+  ensureStagedBar();
 
   /* ---------------- 事件绑定 ---------------- */
 
@@ -505,10 +656,12 @@
 
   document.addEventListener('mousedown', (e) => {
     if (menu && !menu.contains(e.target)) hideMenu();
+    const p = document.getElementById('fofa-exclude-stage-panel');
+    if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-exclude-stage-bar'))) hideStagePanel();
   }, true);
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && menu) hideMenu();
+    if (e.key === 'Escape') { hideMenu(); hideStagePanel(); }
   }, true);
 
   window.addEventListener('scroll', hideMenu, true);

@@ -65,5 +65,15 @@ eq('自引用-就地替换', curReal.replace(selfCondition(lqRouterReal, '路由
 eq('自引用-文本不匹配时放弃', selfCondition(lqRouterReal, '不存在的值'), null);
 eq('同区块其他条目-ADSL', extractNew(lqAdslReal, curReal), 'category="ADSL"');
 
+// ===== 批量应用 applyBatch =====
+const applyBatch = eval('(0,' + grabFn('applyBatch').replace('function applyBatch', 'function') + ')');
+eq('批量排除-追加', applyBatch('title="web"', ['product="A"', 'country="US"'], 'exclude'),
+  'title="web" && product!="A" && country!="US"');
+eq('批量排除-已存在就地取反', applyBatch('(category="路由器" && after="2026-08-24") && icon_hash=="-869158581"', ['category="路由器"', 'port="80"'], 'exclude'),
+  '(category!="路由器" && after="2026-08-24") && icon_hash=="-869158581" && port!="80"');
+eq('批量包含-跳过已存在', applyBatch('title="web"', ['title="web"', 'port="80"'], 'include'),
+  'title="web" && port="80"');
+eq('批量-无当前语句', applyBatch('', ['product="A"'], 'exclude'), 'product!="A"');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
