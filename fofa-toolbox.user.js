@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         FOFA 右键排除搜索
-// @namespace    fofa.exclude.menu
+// @name         FOFA 工具箱
+// @namespace    fofa.toolbox
 // @version      3.6.0
-// @description  FOFA 增强工具：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；指纹收藏库（记录搜索语句+IP数/厂商/型号/地区等，表格编辑、本地存储、JSON/CSV 导出）。Shift+右键 = 原生菜单
+// @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；指纹收藏库（记录搜索语句+IP数/厂商/型号/地区等，表格编辑、本地存储、JSON/CSV 导出）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
 // @match        *://fofa.so/*
@@ -21,7 +21,7 @@
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
   const VER = '3.6.0';
 
-  console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
+  console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
   let menu = null;
 
@@ -357,8 +357,8 @@
 
   /* ---------------- 打开 / 复制 / 批量暂存 ---------------- */
 
-  const STAGE_KEY = 'fofa-exclude-staged';
-  const CURWIN_KEY = 'fofa-exclude-current';
+  const STAGE_KEY = 'fofa-toolbox-staged';
+  const CURWIN_KEY = 'fofa-toolbox-current';
 
   function loadStaged() {
     try { const a = JSON.parse(sessionStorage.getItem(STAGE_KEY) || '[]'); return Array.isArray(a) ? a : []; }
@@ -435,81 +435,81 @@
     String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   function injectStyle() {
-    if (document.getElementById('fofa-exclude-style')) return;
+    if (document.getElementById('fofa-toolbox-style')) return;
     const st = document.createElement('style');
-    st.id = 'fofa-exclude-style';
+    st.id = 'fofa-toolbox-style';
     st.textContent = `
-#fofa-exclude-menu{position:fixed;z-index:2147483647;width:340px;box-sizing:border-box;background:#fff;color:#24292f;
+#fofa-toolbox-menu{position:fixed;z-index:2147483647;width:340px;box-sizing:border-box;background:#fff;color:#24292f;
   border:1px solid #d0d7de;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);padding:8px;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
-#fofa-exclude-menu .fx-cur{color:#57606a;font-size:11px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:text}
-#fofa-exclude-menu .fx-cond{width:100%;box-sizing:border-box;background:#fff;border:1px solid #d0d7de;border-radius:6px;
+#fofa-toolbox-menu .fx-cur{color:#57606a;font-size:11px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:text}
+#fofa-toolbox-menu .fx-cond{width:100%;box-sizing:border-box;background:#fff;border:1px solid #d0d7de;border-radius:6px;
   color:#24292f;padding:5px 8px;font:12px/1.4 Consolas,Menlo,monospace;outline:none}
-#fofa-exclude-menu .fx-cond:focus{border-color:#f1961f}
-#fofa-exclude-menu .fx-btns{display:flex;gap:6px;margin-top:8px}
-#fofa-exclude-menu .fx-btns button{border:1px solid #d0d7de;border-radius:6px;padding:5px 10px;cursor:pointer;
+#fofa-toolbox-menu .fx-cond:focus{border-color:#f1961f}
+#fofa-toolbox-menu .fx-btns{display:flex;gap:6px;margin-top:8px}
+#fofa-toolbox-menu .fx-btns button{border:1px solid #d0d7de;border-radius:6px;padding:5px 10px;cursor:pointer;
   font:12px/1.4 inherit;background:#f6f8fa;color:#24292f;white-space:nowrap}
-#fofa-exclude-menu .fx-btns button:hover{background:#eef1f4}
-#fofa-exclude-menu .fx-primary{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
-#fofa-exclude-menu .fx-primary:hover{background:#ffab2e;border-color:#ffab2e}
-#fofa-exclude-menu .fx-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;color:#8b949e;font-size:10px;margin-top:6px}
-#fofa-exclude-menu .fx-copy,#fofa-exclude-menu .fx-stage{padding:5px 8px}
-#fofa-exclude-menu .fx-curwin{display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none}
-#fofa-exclude-menu .fx-curwin input{margin:0;accent-color:#f1961f}
-#fofa-exclude-stage-bar{position:fixed;right:12px;bottom:12px;z-index:2147483646;background:#f1961f;color:#fff;border-radius:16px;
+#fofa-toolbox-menu .fx-btns button:hover{background:#eef1f4}
+#fofa-toolbox-menu .fx-primary{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
+#fofa-toolbox-menu .fx-primary:hover{background:#ffab2e;border-color:#ffab2e}
+#fofa-toolbox-menu .fx-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;color:#8b949e;font-size:10px;margin-top:6px}
+#fofa-toolbox-menu .fx-copy,#fofa-toolbox-menu .fx-stage{padding:5px 8px}
+#fofa-toolbox-menu .fx-curwin{display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none}
+#fofa-toolbox-menu .fx-curwin input{margin:0;accent-color:#f1961f}
+#fofa-toolbox-stage-bar{position:fixed;right:12px;bottom:12px;z-index:2147483646;background:#f1961f;color:#fff;border-radius:16px;
   padding:4px 12px;font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer;
   box-shadow:0 4px 14px rgba(0,0,0,.28);user-select:none}
-#fofa-exclude-stage-bar:hover{background:#ffab2e}
-#fofa-exclude-stage-panel{position:fixed;right:12px;bottom:48px;z-index:2147483647;width:380px;box-sizing:border-box;
+#fofa-toolbox-stage-bar:hover{background:#ffab2e}
+#fofa-toolbox-stage-panel{position:fixed;right:12px;bottom:48px;z-index:2147483647;width:380px;box-sizing:border-box;
   background:#fff;color:#24292f;border:1px solid #d0d7de;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);padding:8px;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
-#fofa-exclude-stage-panel .fx-p-title{font-weight:600;color:#57606a;margin-bottom:6px}
-#fofa-exclude-stage-panel .fx-p-list{max-height:200px;overflow:auto}
-#fofa-exclude-stage-panel .fx-p-item{display:flex;align-items:center;gap:6px;padding:3px 4px;border-radius:4px}
-#fofa-exclude-stage-panel .fx-p-item:hover{background:#f6f8fa}
-#fofa-exclude-stage-panel .fx-p-item span{flex:1;font-family:Consolas,Menlo,monospace;font-size:11px;white-space:nowrap;
+#fofa-toolbox-stage-panel .fx-p-title{font-weight:600;color:#57606a;margin-bottom:6px}
+#fofa-toolbox-stage-panel .fx-p-list{max-height:200px;overflow:auto}
+#fofa-toolbox-stage-panel .fx-p-item{display:flex;align-items:center;gap:6px;padding:3px 4px;border-radius:4px}
+#fofa-toolbox-stage-panel .fx-p-item:hover{background:#f6f8fa}
+#fofa-toolbox-stage-panel .fx-p-item span{flex:1;font-family:Consolas,Menlo,monospace;font-size:11px;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
-#fofa-exclude-stage-panel .fx-p-item b{cursor:pointer;color:#8b949e;font-weight:400;padding:0 4px}
-#fofa-exclude-stage-panel .fx-p-item b:hover{color:#e5484d}
-#fofa-exclude-stage-panel .fx-p-btns{display:flex;gap:6px;margin-top:8px}
-#fofa-exclude-stage-panel .fx-p-btns button{border:1px solid #d0d7de;border-radius:6px;padding:5px 8px;cursor:pointer;
+#fofa-toolbox-stage-panel .fx-p-item b{cursor:pointer;color:#8b949e;font-weight:400;padding:0 4px}
+#fofa-toolbox-stage-panel .fx-p-item b:hover{color:#e5484d}
+#fofa-toolbox-stage-panel .fx-p-btns{display:flex;gap:6px;margin-top:8px}
+#fofa-toolbox-stage-panel .fx-p-btns button{border:1px solid #d0d7de;border-radius:6px;padding:5px 8px;cursor:pointer;
   font:12px/1.4 inherit;background:#f6f8fa;color:#24292f;white-space:nowrap}
-#fofa-exclude-stage-panel .fx-p-btns button:hover{background:#eef1f4}
-#fofa-exclude-stage-panel .fx-p-primary{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
-#fofa-exclude-stage-panel .fx-p-primary:hover{background:#ffab2e;border-color:#ffab2e}
-#fofa-exclude-rubber{position:fixed;z-index:2147483646;border:1.5px dashed #f1961f;background:rgba(241,150,31,.12);
+#fofa-toolbox-stage-panel .fx-p-btns button:hover{background:#eef1f4}
+#fofa-toolbox-stage-panel .fx-p-primary{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
+#fofa-toolbox-stage-panel .fx-p-primary:hover{background:#ffab2e;border-color:#ffab2e}
+#fofa-toolbox-rubber{position:fixed;z-index:2147483646;border:1.5px dashed #f1961f;background:rgba(241,150,31,.12);
   pointer-events:none}
-#fofa-exclude-lib-btn{position:fixed;left:12px;bottom:12px;z-index:2147483646;background:#fff;color:#57606a;
+#fofa-toolbox-lib-btn{position:fixed;left:12px;bottom:12px;z-index:2147483646;background:#fff;color:#57606a;
   border:1px solid #d0d7de;border-radius:16px;padding:4px 12px;cursor:pointer;user-select:none;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.2)}
-#fofa-exclude-lib-btn:hover{color:#f1961f;border-color:#f1961f}
-#fofa-exclude-lib{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483647;width:1080px;
+#fofa-toolbox-lib-btn:hover{color:#f1961f;border-color:#f1961f}
+#fofa-toolbox-lib{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483647;width:1080px;
   max-width:94vw;max-height:84vh;display:flex;flex-direction:column;background:#fff;color:#24292f;border:1px solid #d0d7de;
   border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.22);overflow:hidden;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
-#fofa-exclude-lib.fx-l-lower{top:62%}
-#fofa-exclude-lib .fx-l-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eef1f4;cursor:move;user-select:none}
-#fofa-exclude-lib .fx-l-title{font-weight:600}
-#fofa-exclude-lib .fx-l-hbtns{display:flex;gap:6px}
-#fofa-exclude-lib .fx-l-hbtns button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
+#fofa-toolbox-lib.fx-l-lower{top:62%}
+#fofa-toolbox-lib .fx-l-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eef1f4;cursor:move;user-select:none}
+#fofa-toolbox-lib .fx-l-title{font-weight:600}
+#fofa-toolbox-lib .fx-l-hbtns{display:flex;gap:6px}
+#fofa-toolbox-lib .fx-l-hbtns button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
   cursor:pointer;font:12px/1.4 inherit;color:#24292f}
-#fofa-exclude-lib .fx-l-hbtns button:hover{background:#eef1f4}
-#fofa-exclude-lib .fx-l-tablewrap{overflow:auto;flex:1}
-#fofa-exclude-lib .fx-l-table{border-collapse:collapse;width:100%}
-#fofa-exclude-lib .fx-l-table th{position:sticky;top:0;background:#f6f8fa;color:#57606a;font-weight:600;text-align:left;
+#fofa-toolbox-lib .fx-l-hbtns button:hover{background:#eef1f4}
+#fofa-toolbox-lib .fx-l-tablewrap{overflow:auto;flex:1}
+#fofa-toolbox-lib .fx-l-table{border-collapse:collapse;width:100%}
+#fofa-toolbox-lib .fx-l-table th{position:sticky;top:0;background:#f6f8fa;color:#57606a;font-weight:600;text-align:left;
   padding:6px 8px;border-bottom:1px solid #eef1f4;white-space:nowrap}
-#fofa-exclude-lib .fx-l-table td{padding:5px 8px;border-bottom:1px solid #f0f2f5;vertical-align:top;word-break:break-all}
-#fofa-exclude-lib .fx-l-table td[contenteditable]:focus{outline:1.5px solid #f1961f;outline-offset:-1.5px;background:#fffdf5}
-#fofa-exclude-lib .fx-l-mono{font-family:Consolas,Menlo,monospace;font-size:11px}
-#fofa-exclude-lib .fx-l-ops b{cursor:pointer;color:#8b949e;font-weight:400;margin-right:6px}
-#fofa-exclude-lib .fx-l-ops b.fx-l-search:hover{color:#f1961f}
-#fofa-exclude-lib .fx-l-ops b.fx-l-cal:hover{color:#f1961f}
-#fofa-exclude-lib .fx-l-ops b.fx-l-del:hover{color:#e5484d}
-#fofa-exclude-lib tr.fx-l-pin td{background:#fffaf0;color:#57606a}
-#fofa-exclude-lib tr.fx-l-pin td:first-child{font-weight:600;color:#b25e09}
-#fofa-exclude-lib tr.fx-l-userpin td{background:#fffdf5}
-#fofa-exclude-lib .fx-l-ops b.fx-l-pinbtn:hover{color:#b25e09}
-#fofa-exclude-lib .fx-l-ops b.fx-l-pinbtn.on{color:#b25e09}
+#fofa-toolbox-lib .fx-l-table td{padding:5px 8px;border-bottom:1px solid #f0f2f5;vertical-align:top;word-break:break-all}
+#fofa-toolbox-lib .fx-l-table td[contenteditable]:focus{outline:1.5px solid #f1961f;outline-offset:-1.5px;background:#fffdf5}
+#fofa-toolbox-lib .fx-l-mono{font-family:Consolas,Menlo,monospace;font-size:11px}
+#fofa-toolbox-lib .fx-l-ops b{cursor:pointer;color:#8b949e;font-weight:400;margin-right:6px}
+#fofa-toolbox-lib .fx-l-ops b.fx-l-search:hover{color:#f1961f}
+#fofa-toolbox-lib .fx-l-ops b.fx-l-cal:hover{color:#f1961f}
+#fofa-toolbox-lib .fx-l-ops b.fx-l-del:hover{color:#e5484d}
+#fofa-toolbox-lib tr.fx-l-pin td{background:#fffaf0;color:#57606a}
+#fofa-toolbox-lib tr.fx-l-pin td:first-child{font-weight:600;color:#b25e09}
+#fofa-toolbox-lib tr.fx-l-userpin td{background:#fffdf5}
+#fofa-toolbox-lib .fx-l-ops b.fx-l-pinbtn:hover{color:#b25e09}
+#fofa-toolbox-lib .fx-l-ops b.fx-l-pinbtn.on{color:#b25e09}
 #fofa-export-choice{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:2147483647;width:340px;
   background:#fff;color:#24292f;border:1px solid #d0d7de;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.25);
   padding:14px;font:12px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
@@ -521,8 +521,8 @@
 #fofa-export-choice .fx-e-btns button:hover{background:#eef1f4}
 #fofa-export-choice .fx-e-resolve{background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
 #fofa-export-choice .fx-e-resolve:hover{background:#ffab2e;border-color:#ffab2e}
-#fofa-exclude-lib .fx-l-empty{color:#8b949e;text-align:center;padding:24px}
-#fofa-exclude-lib .fx-l-foot{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}`;
+#fofa-toolbox-lib .fx-l-empty{color:#8b949e;text-align:center;padding:24px}
+#fofa-toolbox-lib .fx-l-foot{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}`;
     document.head.appendChild(st);
   }
 
@@ -535,7 +535,7 @@
     injectStyle();
 
     menu = document.createElement('div');
-    menu.id = 'fofa-exclude-menu';
+    menu.id = 'fofa-toolbox-menu';
     menu.innerHTML = `
       <div class="fx-cur" title="${esc(cand.cur || '当前页面无搜索语句')}">${esc(cand.cur || '无当前语句')}</div>
       <input class="fx-cond" spellcheck="false" placeholder='例如 product="HIKVISION-视频监控" 或 icon_hash="-1940193079"'>
@@ -628,13 +628,13 @@
   /* ---------------- 批量暂存：右下角徽标 + 面板 ---------------- */
 
   function hideStagePanel() {
-    const p = document.getElementById('fofa-exclude-stage-panel');
+    const p = document.getElementById('fofa-toolbox-stage-panel');
     if (p) p.remove();
   }
 
   function ensureStagedBar() {
     const n = loadStaged().length;
-    let bar = document.getElementById('fofa-exclude-stage-bar');
+    let bar = document.getElementById('fofa-toolbox-stage-bar');
     if (!n) {
       if (bar) bar.remove();
       hideStagePanel();
@@ -642,11 +642,11 @@
     }
     if (!bar) {
       bar = document.createElement('div');
-      bar.id = 'fofa-exclude-stage-bar';
+      bar.id = 'fofa-toolbox-stage-bar';
       bar.title = '已暂存的条件，点击批量排除/包含';
       bar.addEventListener('click', (e) => {
         e.stopPropagation();
-        const p = document.getElementById('fofa-exclude-stage-panel');
+        const p = document.getElementById('fofa-toolbox-stage-panel');
         if (p) hideStagePanel(); else showStagePanel();
       });
       document.documentElement.appendChild(bar);
@@ -659,7 +659,7 @@
     injectStyle();
     const arr = loadStaged();
     const panel = document.createElement('div');
-    panel.id = 'fofa-exclude-stage-panel';
+    panel.id = 'fofa-toolbox-stage-panel';
     panel.innerHTML = `
       <div class="fx-p-title">已暂存 ${arr.length} 个条件（排除时已存在于当前语句的会被就地取反）</div>
       <div class="fx-p-list">${arr.map((c, i) =>
@@ -704,7 +704,7 @@
      国家/地区排名（第一名+同位数，如 3000/2000/999 -> 前两者）、Server、Title；
      另有厂商/型号/备注等手动字段。表格式编辑，localStorage 持久化，JSON/CSV 导出。 */
 
-  const LIB_KEY = 'fofa-fingerprints';
+  const LIB_KEY = 'fofa-toolbox-fingerprints';
   const LIB_FIELDS = [
     { key: 'name', label: '名称', w: '80px' },
     { key: 'query', label: '搜索语句', w: '180px', mono: true },
@@ -844,7 +844,7 @@
 
   function closeLib(byUser) {
     if (byUser) libUserClosed = true;
-    const p = document.getElementById('fofa-exclude-lib');
+    const p = document.getElementById('fofa-toolbox-lib');
     if (p) p.remove();
   }
 
@@ -912,7 +912,7 @@
     closeLib(false);
     injectStyle();
     const panel = document.createElement('div');
-    panel.id = 'fofa-exclude-lib';
+    panel.id = 'fofa-toolbox-lib';
     if (lower) panel.classList.add('fx-l-lower'); // 首页：中间偏下
     renderLib(panel);
     attachLibEvents(panel); // 只挂一次
@@ -1073,8 +1073,8 @@
       const data = resolve
         ? arr.map((it) => Object.assign({}, it, { query: resolveQuery(it.query, false) }))
         : arr;
-      if (kind === 'json') downloadFile('fofa-fingerprints.json', JSON.stringify(data, null, 2), 'application/json');
-      else downloadFile('fofa-fingerprints.csv', libToCsv(data), 'text/csv');
+      if (kind === 'json') downloadFile('fofa-toolbox-fingerprints.json', JSON.stringify(data, null, 2), 'application/json');
+      else downloadFile('fofa-toolbox-fingerprints.csv', libToCsv(data), 'text/csv');
     };
     if (arr.some((it) => hasBuiltinSyntax(it.query))) showExportChoice(run);
     else run(false);
@@ -1112,14 +1112,14 @@
   })();
 
   function ensureLibBtn() {
-    if (document.getElementById('fofa-exclude-lib-btn')) return;
+    if (document.getElementById('fofa-toolbox-lib-btn')) return;
     const b = document.createElement('div');
-    b.id = 'fofa-exclude-lib-btn';
+    b.id = 'fofa-toolbox-lib-btn';
     b.textContent = '🗂 指纹库';
     b.title = '打开指纹收藏库';
     b.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (document.getElementById('fofa-exclude-lib')) closeLib(true); else openLib();
+      if (document.getElementById('fofa-toolbox-lib')) closeLib(true); else openLib();
     });
     document.documentElement.appendChild(b);
   }
@@ -1131,7 +1131,7 @@
   setInterval(() => {
     if (libUserClosed) return;
     const home = location.pathname === '/' || location.pathname === '';
-    if (home && !document.getElementById('fofa-exclude-lib')) openLib(true);
+    if (home && !document.getElementById('fofa-toolbox-lib')) openLib(true);
   }, 1500);
 
   /* ---------------- Alt + 左键拖拽：框选批量 ----------------
@@ -1200,7 +1200,7 @@
   function rubberStop(cancelled) {
     const r = rubber;
     rubber = null;
-    const ov = document.getElementById('fofa-exclude-rubber');
+    const ov = document.getElementById('fofa-toolbox-rubber');
     if (ov) ov.remove();
     document.documentElement.style.userSelect = '';
     if (!r || cancelled || !r.engaged || !r.rect) return null;
@@ -1211,7 +1211,7 @@
 
   document.addEventListener('mousedown', (e) => {
     if (!e.altKey || e.button !== 0) return;
-    if ((menu && menu.contains(e.target)) || (e.target.closest && e.target.closest('#fofa-exclude-stage-bar,#fofa-exclude-stage-panel'))) return;
+    if ((menu && menu.contains(e.target)) || (e.target.closest && e.target.closest('#fofa-toolbox-stage-bar,#fofa-toolbox-stage-panel'))) return;
     rubber = { x: e.clientX, y: e.clientY, engaged: false };
   }, true);
 
@@ -1221,7 +1221,7 @@
     if (!rubber.engaged) {
       rubber.engaged = true;
       const ov = document.createElement('div');
-      ov.id = 'fofa-exclude-rubber';
+      ov.id = 'fofa-toolbox-rubber';
       document.documentElement.appendChild(ov);
       document.documentElement.style.userSelect = 'none';
       rubber.overlay = ov;
@@ -1263,10 +1263,10 @@
 
   document.addEventListener('mousedown', (e) => {
     if (menu && !menu.contains(e.target)) hideMenu();
-    const p = document.getElementById('fofa-exclude-stage-panel');
-    if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-exclude-stage-bar'))) hideStagePanel();
-    const lib = document.getElementById('fofa-exclude-lib');
-    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-exclude-lib-btn'))) closeLib(true);
+    const p = document.getElementById('fofa-toolbox-stage-panel');
+    if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-stage-bar'))) hideStagePanel();
+    const lib = document.getElementById('fofa-toolbox-lib');
+    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-lib-btn'))) closeLib(true);
   }, true);
 
   document.addEventListener('keydown', (e) => {

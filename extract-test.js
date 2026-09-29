@@ -1,6 +1,6 @@
-// 从 fofa-exclude.user.js 中抠出纯函数做单元测试
+// 从 fofa-toolbox.user.js 中抠出纯函数做单元测试
 const fs = require('fs');
-const src = fs.readFileSync('E:/plugins/fofa-exclude/fofa-exclude.user.js', 'utf8');
+const src = fs.readFileSync('E:/plugins/fofa-toolbox/fofa-toolbox.user.js', 'utf8');
 
 function grabFn(name) {
   const start = src.indexOf('function ' + name + '(');
