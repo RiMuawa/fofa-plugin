@@ -112,5 +112,17 @@ eq('名称-第一名独一档', pickName('', [{ name: '甲', count: '9000' }, { 
 eq('名称-并列则留空', pickName('', [{ name: '甲', count: '3000' }, { name: '乙', count: '2000' }]), '');
 eq('名称-全无线索留空', pickName('', []), '');
 
+// ===== 置顶指纹与日期替换 =====
+const resolveQuery = eval('(function(){' + grabFn('fmtDate') + '\n' + grabFn('monthAgoOf') + '\n' + grabFn('resolveQuery') + '\nreturn resolveQuery;})()');
+const sep29 = new Date(2026, 8, 29); // 2026-09-29（用户示例的“今天”）
+eq('置顶-昨天替换', resolveQuery('after="YESTERDAY" && protocol="telnet" && "busybox"', false, sep29),
+  'after="2026-09-28" && protocol="telnet" && "busybox"');
+eq('置顶-一月前', resolveQuery('after="YESTERDAY" && protocol="telnet" && "busybox"', true, sep29),
+  'after="2026-08-29" && protocol="telnet" && "busybox"');
+eq('普通语句-一月前', resolveQuery('after="2026-09-28" && app="Tengine"', true, sep29), 'after="2026-08-29" && app="Tengine"');
+eq('普通语句-原样', resolveQuery('after="2026-09-28" && app="Tengine"', false, sep29), 'after="2026-09-28" && app="Tengine"');
+eq('月末钳制', resolveQuery('after="2026-03-31"', true, new Date(2026, 2, 31)), 'after="2026-02-28"');
+eq('无after-一月前不变', resolveQuery('app="Tengine" && title="x"', true, sep29), 'app="Tengine" && title="x"');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

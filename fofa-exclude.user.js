@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      3.4.0
+// @version      3.5.0
 // @description  FOFA 增强工具：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；指纹收藏库（记录搜索语句+IP数/厂商/型号/地区等，表格编辑、本地存储、JSON/CSV 导出）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.4.0';
+  const VER = '3.5.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -503,7 +503,10 @@
 #fofa-exclude-lib .fx-l-mono{font-family:Consolas,Menlo,monospace;font-size:11px}
 #fofa-exclude-lib .fx-l-ops b{cursor:pointer;color:#8b949e;font-weight:400;margin-right:6px}
 #fofa-exclude-lib .fx-l-ops b.fx-l-search:hover{color:#f1961f}
+#fofa-exclude-lib .fx-l-ops b.fx-l-cal:hover{color:#f1961f}
 #fofa-exclude-lib .fx-l-ops b.fx-l-del:hover{color:#e5484d}
+#fofa-exclude-lib tr.fx-l-pin td{background:#fffaf0;color:#57606a}
+#fofa-exclude-lib tr.fx-l-pin td:first-child{font-weight:600;color:#b25e09}
 #fofa-exclude-lib .fx-l-empty{color:#8b949e;text-align:center;padding:24px}
 #fofa-exclude-lib .fx-l-foot{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}`;
     document.head.appendChild(st);
@@ -904,11 +907,42 @@
     document.documentElement.appendChild(panel);
   }
 
+  /* ---------- 置顶指纹与日期替换 ----------
+     置顶指纹固定显示在最上方：YESTERDAY 占位符在搜索时替换为系统昨天的日期；
+     每行 📅 把语句中 after 的日期替换为系统时间的一个月前（月末日钳制，3月31日->2月28日）。 */
+
+  const PIN_QUERY = 'after="YESTERDAY" && protocol="telnet" && "busybox"';
+  const PIN_NAME = '📌 每日巡查（telnet busybox）';
+
+  function fmtDate(d) {
+    const p = (n) => (n < 10 ? '0' + n : String(n));
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+
+  function monthAgoOf(now) {
+    const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDay = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    first.setDate(Math.min(now.getDate(), lastDay));
+    return fmtDate(first);
+  }
+
+  // monthMode: 把 after 的日期值替换为一月前；随后统一替换 YESTERDAY 占位符为昨天
+  function resolveQuery(q, monthMode, now) {
+    now = now || new Date();
+    let out = String(q || '');
+    if (monthMode) {
+      out = out.replace(/(after\s*={1,2}(?!=)\s*")[^"]*(")/g, (m, a, b) => a + monthAgoOf(now) + b);
+    }
+    out = out.replace(/YESTERDAY/g, fmtDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)));
+    return out;
+  }
+
   function renderLib(panel) {
     const arr = loadLib();
+    const pinRow = `<tr class="fx-l-pin"><td>${esc(PIN_NAME)}</td><td class="fx-l-mono">${esc(PIN_QUERY)}</td>${LIB_FIELDS.slice(2).map(() => '<td></td>').join('')}<td class="fx-l-ops"><b class="fx-l-search" title="搜索（YESTERDAY 自动替换为昨天日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b></td></tr>`;
     const rows = arr.map((it) => `<tr data-id="${it.id}">${LIB_FIELDS.map((f) =>
       `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
-    ).join('')}<td class="fx-l-ops"><b class="fx-l-search" title="用此语句搜索">🔍</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
+    ).join('')}<td class="fx-l-ops"><b class="fx-l-search" title="用此语句搜索（YESTERDAY 替换为昨天）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
     // 只负责渲染内容；事件在 openLib 里对 panel 挂一次（委托，重渲染不影响）
     panel.innerHTML = `
       <div class="fx-l-head">
@@ -922,9 +956,9 @@
       </div>
       <div class="fx-l-tablewrap"><table class="fx-l-table">
         <thead><tr>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="${LIB_FIELDS.length + 1}" class="fx-l-empty">暂无条目：在结果页右键菜单点 ⭐ 收藏当前语句，或点「新建」手动添加</td></tr>`}</tbody>
+        <tbody>${pinRow}${rows || `<tr><td colspan="${LIB_FIELDS.length + 1}" class="fx-l-empty">暂无收藏条目：在结果页右键菜单点 ⭐ 收藏当前语句，或点「新建」手动添加</td></tr>`}</tbody>
       </table></div>
-      <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 🔍 用该语句搜索 · 数据保存在浏览器本地（localStorage）</div>`;
+      <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 🔍 搜索（YESTERDAY=昨天） · 📅 after 改为一月前搜索 · 数据保存在浏览器本地（localStorage）</div>`;
   }
 
   // 事件只在 openLib 时对 panel 挂一次。绝不能放进 renderLib：
@@ -950,11 +984,21 @@
         renderLib(panel);
         return;
       }
+      // 📅：after 替换为一月前再搜索（置顶行与普通行通用）
+      const cal = e.target.closest && e.target.closest('.fx-l-cal');
+      if (cal) {
+        const tr = cal.closest('tr');
+        const q = tr.classList.contains('fx-l-pin') ? PIN_QUERY
+          : ((loadLib().find((x) => String(x.id) === tr.dataset.id) || {}).query || '');
+        if (q) openTab(resolveQuery(q, true));
+        return;
+      }
       const search = e.target.closest && e.target.closest('.fx-l-search');
       if (search) {
-        const id = search.closest('tr').dataset.id;
-        const it = loadLib().find((x) => String(x.id) === id);
-        if (it && it.query) openTab(it.query);
+        const tr = search.closest('tr');
+        const q = tr.classList.contains('fx-l-pin') ? PIN_QUERY
+          : ((loadLib().find((x) => String(x.id) === tr.dataset.id) || {}).query || '');
+        if (q) openTab(resolveQuery(q, false));
         return;
       }
       if (e.target.closest('.fx-l-add')) {
