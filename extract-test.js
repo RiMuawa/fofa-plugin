@@ -134,5 +134,53 @@ eq('检测-内置语法', hasBuiltinSyntax('after="LastMonth" && app="X"'), true
 eq('检测-普通语句', hasBuiltinSyntax('after="2026-09-28" && app="X"'), false);
 eq('检测-文本不含', hasBuiltinSyntax('title="yesterday"'), false);
 
+// ===== 导入：CSV/JSON 解析 + 去重合并 =====
+const LIB_FIELDS_SRC = /const LIB_FIELDS = (\[[\s\S]*?\]);/.exec(src)[1];
+const parseImportJson = eval('(0,' + grabFn('parseImportJson').replace('function parseImportJson', 'function') + ')');
+const parseImportCsv = eval('(function(){const LIB_FIELDS = ' + LIB_FIELDS_SRC + ';' + grabFn('parseImportCsv') + '\nreturn parseImportCsv;})()');
+const parseImport = eval('(function(){const LIB_FIELDS = ' + LIB_FIELDS_SRC + ';' + grabFn('parseImportJson') + '\n' + grabFn('parseImportCsv') + '\n' + grabFn('parseImport') + '\nreturn parseImport;})()');
+const mergeImport = eval('(function(){const LIB_FIELDS = ' + LIB_FIELDS_SRC + ';' + grabFn('mergeImport') + '\nreturn mergeImport;})()');
+// libToCsv 依赖 LIB_FIELDS 与 csvCell，原绑定缺这两个作用域（此前未被调用故未暴露）
+const libToCsvFull = eval('(function(){const LIB_FIELDS = ' + LIB_FIELDS_SRC + ';const csvCell = ' + csvMatch[1] + ';' + grabFn('libToCsv') + '\nreturn libToCsv;})()');
+
+// CSV 往返：libToCsv 导出再导入，字段一致（含引号内逗号/双引号/换行/BOM/CRLF）
+const csvSample = [
+  { id: 1, name: '路由器', query: 'category="路由器" && after="YESTERDAY"', ip: '1234', product: 'A', category: '路由器', region: '美国、中国', server: 'nginx', title: 't,1', after: 'YESTERDAY', vendor: 'v', model: 'm', note: 'he said "hi"', ts: '2026/9/29 10:00:00' },
+  { id: 2, name: '多行', query: 'title="multi\nline"', ip: '', product: '', category: '', region: '', server: '', title: 'multi\nline', after: '', vendor: '', model: '', note: '', ts: '2026/9/29 11:00:00' }
+];
+const csvBack = parseImportCsv(libToCsvFull(csvSample));
+eq('导入CSV-往返条数', csvBack.length, 2);
+eq('导入CSV-名称还原', csvBack[0].name, '路由器');
+eq('导入CSV-语句还原', csvBack[0].query, 'category="路由器" && after="YESTERDAY"');
+eq('导入CSV-引号内逗号', csvBack[0].title, 't,1');
+eq('导入CSV-引号内双引号', csvBack[0].note, 'he said "hi"');
+eq('导入CSV-引号内换行', csvBack[1].title, 'multi\nline');
+eq('导入CSV-收藏时间', csvBack[0].ts, '2026/9/29 10:00:00');
+eq('导入CSV-空行跳过', parseImportCsv('名称,搜索语句\r\n\r\nx,app="A"\r\n').length, 1);
+eq('导入CSV-英文表头', parseImportCsv('name,query\nx,app="A"')[0].query, 'app="A"');
+eq('导入CSV-缺语句列报错', (function () { try { parseImportCsv('name,ip\nx,1'); return false; } catch (e) { return true; } })(), true);
+eq('导入JSON-数组', parseImport('[{"query":"app=\\"A\\"","name":"x"}]', 'a.json').length, 1);
+eq('导入JSON-BOM嗅探', parseImport('\ufeff[{"query":"q"}]', '').length, 1);
+eq('导入JSON-items包装', parseImportJson('{"items":[{"query":"q"}]}').length, 1);
+eq('导入JSON-非数组报错', (function () { try { parseImportJson('{"a":1}'); return false; } catch (e) { return true; } })(), true);
+
+// 合并：按语句去重（忽略空白差异）、无语句跳过、整行空白忽略、id 冲突重分配
+const r1 = mergeImport([
+  { name: 'dup', query: 'app="A"', pin: true },
+  { name: 'new', query: 'app="B"', ts: 't' },
+  { name: 'dup2', query: 'app = "B"' },
+  { name: 'noq', query: '', ip: '99' },
+  { name: '', query: '', note: '' }
+], [{ id: 9, name: 'e', query: 'app="A"', ts: 'x' }]);
+eq('导入合并-新增', r1.added, 1);
+eq('导入合并-跳过', r1.skipped, 3);
+eq('导入合并-总条数', r1.list.length, 2);
+eq('导入合并-保留原条目', r1.list[0].name, 'e');
+eq('导入合并-新增字段', r1.list[1].query, 'app="B"');
+const r2 = mergeImport([{ query: 'app="C"', pin: true, id: 9 }], [{ id: 9, query: 'app="Z"' }]);
+eq('导入合并-保留置顶', r2.list[1].pin, true);
+eq('导入合并-id冲突重分配', r2.list[1].id !== 9, true);
+eq('导入合并-整行空白不计跳过', mergeImport([{ query: '', note: '' }], []).skipped, 0);
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

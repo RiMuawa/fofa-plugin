@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.6.0
-// @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；指纹收藏库（记录搜索语句+IP数/厂商/型号/地区等，表格编辑、本地存储、JSON/CSV 导出）。Shift+右键 = 原生菜单
+// @version      3.8.1
+// @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；指纹收藏库（记录搜索语句+IP数/厂商/型号/地区等，表格编辑、本地存储、JSON/CSV 导出与导入）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
 // @match        *://fofa.so/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.6.0';
+  const VER = '3.8.1';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -434,11 +434,13 @@
   const esc = (s) =>
     String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  let toolboxStyle = null; // 样式节点被页面框架摘掉后可复用重挂
   function injectStyle() {
-    if (document.getElementById('fofa-toolbox-style')) return;
-    const st = document.createElement('style');
-    st.id = 'fofa-toolbox-style';
-    st.textContent = `
+    if (toolboxStyle && toolboxStyle.isConnected) return;
+    if (!toolboxStyle) {
+      toolboxStyle = document.createElement('style');
+      toolboxStyle.id = 'fofa-toolbox-style';
+      toolboxStyle.textContent = `
 #fofa-toolbox-menu{position:fixed;z-index:2147483647;width:340px;box-sizing:border-box;background:#fff;color:#24292f;
   border:1px solid #d0d7de;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);padding:8px;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
@@ -505,11 +507,9 @@
 #fofa-toolbox-lib .fx-l-ops b.fx-l-search:hover{color:#f1961f}
 #fofa-toolbox-lib .fx-l-ops b.fx-l-cal:hover{color:#f1961f}
 #fofa-toolbox-lib .fx-l-ops b.fx-l-del:hover{color:#e5484d}
-#fofa-toolbox-lib tr.fx-l-pin td{background:#fffaf0;color:#57606a}
-#fofa-toolbox-lib tr.fx-l-pin td:first-child{font-weight:600;color:#b25e09}
-#fofa-toolbox-lib tr.fx-l-userpin td{background:#fffdf5}
 #fofa-toolbox-lib .fx-l-ops b.fx-l-pinbtn:hover{color:#b25e09}
 #fofa-toolbox-lib .fx-l-ops b.fx-l-pinbtn.on{color:#b25e09}
+#fofa-toolbox-lib tr.fx-l-userpin td{background:#fffdf5}
 #fofa-export-choice{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:2147483647;width:340px;
   background:#fff;color:#24292f;border:1px solid #d0d7de;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.25);
   padding:14px;font:12px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
@@ -521,10 +521,22 @@
 #fofa-export-choice .fx-e-btns button:hover{background:#eef1f4}
 #fofa-export-choice .fx-e-resolve{background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
 #fofa-export-choice .fx-e-resolve:hover{background:#ffab2e;border-color:#ffab2e}
+#fofa-imp-toast{position:fixed;left:50%;top:64px;transform:translateX(-50%);z-index:2147483647;max-width:480px;
+  background:#fff;color:#24292f;border:1px solid #d0d7de;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.22);
+  padding:10px 14px;font:12px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer}
+#fofa-imp-toast b{color:#b25e09}
 #fofa-toolbox-lib .fx-l-empty{color:#8b949e;text-align:center;padding:24px}
 #fofa-toolbox-lib .fx-l-foot{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}`;
-    document.head.appendChild(st);
+      (document.head || document.documentElement).appendChild(toolboxStyle);
+    }
   }
+
+  /* FOFA（Nuxt/unhead）注水时会清理 head 里的未知标签，样式一旦被摘掉，
+     指纹库面板/徽标/按钮会退化成页面底部的无样式内容块（刷新后“静态镶嵌”在页面上，
+     手动开关面板才会恢复——因为只有那时才重新注入样式）。盯住 head 被删即补回，
+     另由周期检查兜底（MutationObserver 自身追加样式也会触发回调，但 isConnected 检查使其空转）。 */
+  new MutationObserver(() => injectStyle())
+    .observe(document.head || document.documentElement, { childList: true });
 
   function hideMenu() {
     if (menu) { menu.remove(); menu = null; }
@@ -921,14 +933,11 @@
     document.documentElement.appendChild(panel);
   }
 
-  /* ---------- 置顶指纹与内置日期语法 ----------
+  /* ---------- 内置日期语法 ----------
      内置占位语法（仅在 after 的值内识别，不误伤普通文本）：
        YESTERDAY -> 系统昨天的日期；LastMonth -> 系统时间的一个月前（月末日钳制）；
-     每行 📅 把语句中 after 的日期整体替换为一月前再搜索；
-     操作栏 📌 可把任意条目置顶/取消置顶。 */
-
-  const PIN_QUERY = 'after="YESTERDAY" && protocol="telnet" && "busybox"';
-  const PIN_NAME = '📌 每日巡查（telnet busybox）';
+       每行 📅 把语句中 after 的日期整体替换为一月前再搜索；
+       操作栏 📌 可把任意条目置顶/取消置顶。 */
 
   function fmtDate(d) {
     const p = (n) => (n < 10 ? '0' + n : String(n));
@@ -972,7 +981,6 @@
     const arr = loadLib();
     // 用户置顶的条目排在前面（sort 稳定，保持原有顺序）
     const sorted = arr.slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
-    const pinRow = `<tr class="fx-l-pin"><td>${esc(PIN_NAME)}</td><td class="fx-l-mono">${esc(PIN_QUERY)}</td>${LIB_FIELDS.slice(2).map(() => '<td></td>').join('')}<td class="fx-l-ops"><b class="fx-l-search" title="搜索（YESTERDAY 自动替换为昨天日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b></td></tr>`;
     const rows = sorted.map((it) => `<tr data-id="${it.id}"${it.pin ? ' class="fx-l-userpin"' : ''}>${LIB_FIELDS.map((f) =>
       `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
     ).join('')}<td class="fx-l-ops"><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
@@ -984,12 +992,13 @@
           <button class="fx-l-add" title="新建条目：结果页会自动填写当前语句与排名信息，否则为空白">＋ 新建</button>
           <button class="fx-l-expj" title="导出为 JSON 文件">导出 JSON</button>
           <button class="fx-l-expc" title="导出为 CSV 文件（Excel 可直接打开）">导出 CSV</button>
+          <button class="fx-l-imp" title="从本脚本导出的 JSON/CSV 文件导入（Excel 另存的 GBK 编码 CSV 也能识别）：按搜索语句去重，已存在的自动跳过">导入</button>
           <button class="fx-l-close">关闭</button>
         </span>
       </div>
       <div class="fx-l-tablewrap"><table class="fx-l-table">
         <thead><tr>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
-        <tbody>${pinRow}${rows || `<tr><td colspan="${LIB_FIELDS.length + 1}" class="fx-l-empty">暂无收藏条目：在结果页右键菜单点 ⭐ 收藏当前语句，或点「新建」手动添加</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="${LIB_FIELDS.length + 1}" class="fx-l-empty">暂无收藏条目：在结果页右键菜单点 ⭐ 收藏当前语句，或点「新建」手动添加</td></tr>`}</tbody>
       </table></div>
       <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 📌 置顶 · 🔍 搜索（after 内 YESTERDAY=昨天 / LastMonth=一月前） · 📅 after 改为一月前搜索 · 数据保存在浏览器本地（localStorage）</div>`;
   }
@@ -1027,20 +1036,16 @@
         renderLib(panel);
         return;
       }
-      // 📅：after 替换为一月前再搜索（置顶行与普通行通用）
+      // 📅：after 替换为一月前再搜索
       const cal = e.target.closest && e.target.closest('.fx-l-cal');
       if (cal) {
-        const tr = cal.closest('tr');
-        const q = tr.classList.contains('fx-l-pin') ? PIN_QUERY
-          : ((loadLib().find((x) => String(x.id) === tr.dataset.id) || {}).query || '');
+        const q = (loadLib().find((x) => String(x.id) === cal.closest('tr').dataset.id) || {}).query || '';
         if (q) openTab(resolveQuery(q, true));
         return;
       }
       const search = e.target.closest && e.target.closest('.fx-l-search');
       if (search) {
-        const tr = search.closest('tr');
-        const q = tr.classList.contains('fx-l-pin') ? PIN_QUERY
-          : ((loadLib().find((x) => String(x.id) === tr.dataset.id) || {}).query || '');
+        const q = (loadLib().find((x) => String(x.id) === search.closest('tr').dataset.id) || {}).query || '';
         if (q) openTab(resolveQuery(q, false));
         return;
       }
@@ -1062,6 +1067,7 @@
       }
       if (e.target.closest('.fx-l-expj')) { doExport('json'); return; }
       if (e.target.closest('.fx-l-expc')) { doExport('csv'); return; }
+      if (e.target.closest('.fx-l-imp')) { doImport(panel); return; }
       if (e.target.closest('.fx-l-close')) closeLib(true);
     });
   }
@@ -1101,6 +1107,145 @@
     document.documentElement.appendChild(dlg);
   }
 
+  /* ---------- 导入：JSON / CSV（与导出格式对称，按搜索语句去重合并） ---------- */
+
+  // 解析 JSON 导出内容：数组，或 {items:[...]} 包装
+  function parseImportJson(text) {
+    let data;
+    try { data = JSON.parse(text); }
+    catch (e) { throw new Error('JSON 解析失败：' + e.message); }
+    const arr = Array.isArray(data) ? data : (data && Array.isArray(data.items) ? data.items : null);
+    if (!arr) throw new Error('JSON 内容不是指纹库数组');
+    return arr.filter((x) => x && typeof x === 'object');
+  }
+
+  // CSV 解析：支持引号包裹的逗号/双引号/换行（与 libToCsv 导出格式对称）
+  function parseImportCsv(text) {
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1); // BOM
+    const rows = [];
+    let row = [], cell = '', inQ = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else inQ = false; }
+        else cell += c;
+      } else if (c === '"' && cell === '') inQ = true; // 引号只在字段开头才有定界作用；手写 CSV 里 app="A" 的引号按字面保留
+      else if (c === ',') { row.push(cell); cell = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        row.push(cell); cell = '';
+        if (row.length > 1 || row[0] !== '') rows.push(row); // 跳过空行
+        row = [];
+      } else cell += c;
+    }
+    if (cell !== '' || row.length) {
+      row.push(cell);
+      if (row.length > 1 || row[0] !== '') rows.push(row);
+    }
+    if (rows.length < 2) throw new Error('CSV 中没有数据行');
+    // 表头：本脚本导出的中文列名，或直接用英文字段名
+    const keyOf = {};
+    for (const f of LIB_FIELDS) { keyOf[f.label] = f.key; keyOf[f.key] = f.key; }
+    keyOf['收藏时间'] = 'ts';
+    const head = rows[0].map((h) => keyOf[String(h).trim()] || null);
+    if (!head.includes('query')) throw new Error('CSV 表头缺少「搜索语句」列');
+    return rows.slice(1).map((r) => {
+      const o = {};
+      head.forEach((k, i) => { if (k) o[k] = r[i] == null ? '' : r[i]; });
+      return o;
+    });
+  }
+
+  // 按扩展名/内容嗅探分发（注意：本函数会被测试脚本按大括号配对截取，注释和字符串里不能出现不配对的花括号）
+  function parseImport(text, fname) {
+    text = String(text).replace(/^\ufeff/, '').trim();
+    if (!text) throw new Error('文件内容为空');
+    const c0 = text.charCodeAt(0); // 91/123 = JSON 数组/对象的起始字符
+    const isJson = /\.json$/i.test(fname || '') || c0 === 91 || c0 === 123;
+    return isJson ? parseImportJson(text) : parseImportCsv(text);
+  }
+
+  // 归一化 + 去重并入现有数组（纯函数）：整行空白忽略；无语句或语句已存在（忽略空白差异）跳过
+  function mergeImport(raws, arr) {
+    const ids = new Set(arr.map((x) => x.id));
+    const key = (q) => String(q || '').replace(/\s+/g, '').trim();
+    const seen = new Set(arr.map((x) => key(x.query)).filter(Boolean));
+    const list = arr.slice();
+    let added = 0, skipped = 0;
+    for (const raw of raws) {
+      const it = {};
+      for (const f of LIB_FIELDS) it[f.key] = raw[f.key] == null ? '' : String(raw[f.key]).trim();
+      it.ts = raw.ts == null ? '' : String(raw.ts).trim();
+      it.pin = raw.pin === true;
+      if (!LIB_FIELDS.some((f) => it[f.key])) continue; // 整行空白
+      const k = key(it.query);
+      if (!k || seen.has(k)) { skipped++; continue; }
+      let id = Number(raw.id);
+      if (!raw.id || !Number.isFinite(id) || ids.has(id)) {
+        do { id = Date.now() + Math.floor(Math.random() * 1e6); } while (ids.has(id));
+      }
+      it.id = id;
+      ids.add(id);
+      seen.add(k);
+      list.push(it);
+      added++;
+    }
+    return { list, added, skipped };
+  }
+
+  // 读取导入文件：带 BOM 按 UTF-8；无 BOM 时先按 UTF-8 解码，
+  // 出现替换符说明是 Excel 另存的 ANSI/GBK 编码 CSV（中文 Windows 默认），改按 GBK 解
+  function readImportText(f, cb) {
+    const rd = new FileReader();
+    rd.onload = () => {
+      const buf = new Uint8Array(rd.result);
+      let text = new TextDecoder('utf-8').decode(buf);
+      if (!(buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) && text.indexOf('\ufffd') >= 0) {
+        try { text = new TextDecoder('gbk').decode(buf); } catch (e) { /* 环境不支持 gbk，保留 utf-8 结果 */ }
+      }
+      cb(text);
+    };
+    rd.onerror = () => cb(null);
+    rd.readAsArrayBuffer(f);
+  }
+
+  function importToast(html) {
+    const old = document.getElementById('fofa-imp-toast');
+    if (old) old.remove();
+    const t = document.createElement('div');
+    t.id = 'fofa-imp-toast';
+    t.innerHTML = html;
+    t.addEventListener('click', () => t.remove());
+    document.documentElement.appendChild(t);
+    setTimeout(() => { if (t.parentNode) t.remove(); }, 4500);
+  }
+
+  function doImport(panel) {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.json,.csv,application/json,text/csv';
+    inp.style.display = 'none';
+    inp.addEventListener('cancel', () => inp.remove()); // 取消选择框时清理隐藏 input（浏览器不支持则无影响）
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0];
+      inp.remove();
+      if (!f) return;
+      readImportText(f, (text) => {
+        if (text == null) { importToast('⚠️ 导入失败：文件读取错误'); return; }
+        try {
+          const res = mergeImport(parseImport(text, f.name), loadLib());
+          saveLib(res.list);
+          if (panel && panel.parentNode) renderLib(panel);
+          importToast(`✅ 导入完成：新增 <b>${res.added}</b> 条，跳过 <b>${res.skipped}</b> 条（语句为空或已存在）`);
+        } catch (err) {
+          importToast('⚠️ 导入失败：' + esc(err.message));
+        }
+      });
+    });
+    document.body.appendChild(inp);
+    inp.click();
+  }
+
   // 启动时清理“全部字段为空”的条目（修复历史监听器叠加 bug 产生的空行堆积）
   (function purgeEmptyLib() {
     try {
@@ -1123,7 +1268,7 @@
     });
     document.documentElement.appendChild(b);
   }
-  setInterval(ensureLibBtn, 2000); // SPA 重渲染后补回按钮
+  setInterval(() => { injectStyle(); ensureLibBtn(); }, 2000); // SPA 重渲染/注水后补回样式与按钮
   ensureLibBtn();
 
   // 首页（fofa.info 根路径）默认自动打开指纹库，居中偏下显示；
@@ -1266,7 +1411,7 @@
     const p = document.getElementById('fofa-toolbox-stage-panel');
     if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-stage-bar'))) hideStagePanel();
     const lib = document.getElementById('fofa-toolbox-lib');
-    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-lib-btn'))) closeLib(true);
+    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-lib-btn,#fofa-imp-toast'))) closeLib(true);
   }, true);
 
   document.addEventListener('keydown', (e) => {
