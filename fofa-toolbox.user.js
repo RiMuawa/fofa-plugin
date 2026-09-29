@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.10.0
-// @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）。Shift+右键 = 原生菜单
+// @version      3.11.0
+// @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
 // @match        *://fofa.so/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.10.0';
+  const VER = '3.11.0';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -575,7 +575,24 @@
 #fofa-toolbox-box .fx-e-hint{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}
 #fofa-toolbox-box .fx-t-resize{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;z-index:5;
   background:linear-gradient(135deg,transparent 0 46%,#c4cdd5 46% 54%,transparent 54% 66%,#c4cdd5 66% 74%,transparent 74% 86%,#c4cdd5 86% 94%,transparent 94%)}
-#fofa-toolbox-box .fx-t-resize:hover{background:linear-gradient(135deg,transparent 0 46%,#f1961f 46% 54%,transparent 54% 66%,#f1961f 66% 74%,transparent 74% 86%,#f1961f 86% 94%,transparent 94%)}`;
+#fofa-toolbox-box .fx-t-resize:hover{background:linear-gradient(135deg,transparent 0 46%,#f1961f 46% 54%,transparent 54% 66%,#f1961f 66% 74%,transparent 74% 86%,#f1961f 86% 94%,transparent 94%)}
+#fofa-toolbox-box .fx-k-search{flex:1;min-width:170px;border:1px solid #d0d7de;border-radius:6px;padding:4px 8px;
+  font:12px/1.4 inherit;background:#fff;color:#24292f;outline:none}
+#fofa-toolbox-box .fx-k-search:focus{border-color:#f1961f}
+#fofa-toolbox-box td.fx-k-imgs{white-space:normal;min-width:150px}
+#fofa-toolbox-box td.fx-k-imgs:focus{outline:1.5px solid #f1961f;outline-offset:-1.5px}
+#fofa-toolbox-box .fx-k-thumbwrap{position:relative;display:inline-block;margin:1px}
+#fofa-toolbox-box .fx-k-thumb{width:46px;height:31px;object-fit:cover;border:1px solid #eef1f4;border-radius:3px;
+  cursor:zoom-in;display:block;background:#fff}
+#fofa-toolbox-box .fx-k-thumbwrap b{position:absolute;right:-4px;top:-5px;cursor:pointer;color:#fff;background:#e5484d;
+  border-radius:50%;width:13px;height:13px;line-height:12px;text-align:center;font-size:9px;font-weight:400;display:none}
+#fofa-toolbox-box .fx-k-thumbwrap:hover b{display:block}
+#fofa-toolbox-box .fx-k-imgs .fx-k-addimg{color:#8b949e;cursor:pointer;font-weight:400;font-size:11px;padding:0 3px}
+#fofa-toolbox-box .fx-k-imgs .fx-k-addimg:hover{color:#f1961f}
+#fofa-toolbox-box .fx-k-hint{color:#b8c0c8;font-size:10px}
+#fofa-kb-lightbox{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.82);display:flex;
+  align-items:center;justify-content:center;cursor:zoom-out}
+#fofa-kb-lightbox img{max-width:92vw;max-height:92vh;border-radius:4px;box-shadow:0 6px 40px rgba(0,0,0,.5)}`;
       (document.head || document.documentElement).appendChild(toolboxStyle);
     }
   }
@@ -996,22 +1013,24 @@
       <div class="fx-l-head">
         <span class="fx-l-title">🧰 FOFA 工具箱</span>
         <span class="fx-t-tabs">
-          <button class="fx-t-tab fx-t-tab-lib" title="指纹收藏库">🗂 指纹库</button>
-          <button class="fx-t-tab fx-t-tab-edit" title="结构化编辑当前搜索语句并发起查询">✏️ 查询编辑器</button>
+          <button class="fx-t-tab fx-t-tab-lib" data-tab="lib" title="指纹收藏库">🗂 指纹库</button>
+          <button class="fx-t-tab fx-t-tab-edit" data-tab="edit" title="结构化编辑当前搜索语句并发起查询">✏️ 查询编辑器</button>
+          <button class="fx-t-tab fx-t-tab-kb" data-tab="kb" title="厂商贴牌关系与产品特征（Server/Title/截图）">📚 知识库</button>
         </span>
         <span class="fx-l-hbtns"><button class="fx-l-close" title="收起工具箱（Esc）">关闭</button></span>
       </div>
       <div class="fx-t-body">
         <div class="fx-t-pane fx-t-pane-lib"></div>
         <div class="fx-t-pane fx-t-pane-edit"></div>
+        <div class="fx-t-pane fx-t-pane-kb"></div>
       </div>
       <div class="fx-t-resize" title="拖动调整宽高（双击标题栏恢复默认尺寸与居中）"></div>`;
     renderLib(panel.querySelector('.fx-t-pane-lib'));
     attachLibEvents(panel.querySelector('.fx-t-pane-lib')); // 只挂一次
     buildEditor(panel.querySelector('.fx-t-pane-edit'));
+    buildKb(panel.querySelector('.fx-t-pane-kb'));
     panel.querySelector('.fx-l-close').addEventListener('click', () => closeToolbox(true));
-    panel.querySelectorAll('.fx-t-tab').forEach((b) =>
-      b.addEventListener('click', () => switchTab(b.classList.contains('fx-t-tab-edit') ? 'edit' : 'lib')));
+    panel.querySelectorAll('.fx-t-tab').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
     attachToolboxDrag(panel);
     applySavedLibPos(panel);
     applySavedBoxSize(panel);
@@ -1020,14 +1039,15 @@
     switchTab(tab || toolboxTab);
   }
 
+  const TOOLBOX_TABS = ['lib', 'edit', 'kb'];
   function switchTab(tab) {
     toolboxTab = tab;
     const box = document.getElementById('fofa-toolbox-box');
     if (!box) return;
-    box.querySelector('.fx-t-tab-lib').classList.toggle('on', tab === 'lib');
-    box.querySelector('.fx-t-tab-edit').classList.toggle('on', tab === 'edit');
-    box.querySelector('.fx-t-pane-lib').classList.toggle('on', tab === 'lib');
-    box.querySelector('.fx-t-pane-edit').classList.toggle('on', tab === 'edit');
+    for (const t of TOOLBOX_TABS) {
+      box.querySelector('.fx-t-tab-' + t).classList.toggle('on', tab === t);
+      box.querySelector('.fx-t-pane-' + t).classList.toggle('on', tab === t);
+    }
     // 页面语句变了（如搜索后跳转/新标签返回）就重读，未变则保留用户当前编辑
     if (tab === 'edit' && currentQuery() !== editLastParsed) parseEditorFromPage();
   }
@@ -1672,6 +1692,286 @@
     updateEditorState(pane);
   }
 
+  /* ---------------- 知识库（工具箱第三个标签页） ----------------
+     记录厂商贴牌关系（母厂 -> 贴牌厂商/产品）与各产品的 Server/Title，
+     支持粘贴/选择产品前端截图（压到 640px 宽的白底 JPEG 存 dataURL，控制 localStorage 体积）。
+     表格按「母厂」排序自然形成贴牌分组，顶部搜索框按 母厂/名称/Server/Title/备注 过滤。 */
+
+  const KB_KEY = 'fofa-toolbox-kb';
+  const KB_FIELDS = [
+    { key: 'parent', label: '母厂/贴牌自', w: '90px' },
+    { key: 'name', label: '名称', w: '110px' },
+    { key: 'server', label: 'Server', w: '100px', mono: true },
+    { key: 'title', label: 'Title', w: '160px' },
+    { key: 'note', label: '备注', w: '110px' }
+  ];
+
+  function loadKb() {
+    try { const a = JSON.parse(localStorage.getItem(KB_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function saveKb(arr) {
+    try { localStorage.setItem(KB_KEY, JSON.stringify(arr)); return true; }
+    catch (e) {
+      importToast('⚠️ 保存失败：浏览器本地存储空间不足（截图较多时请删除部分图片，或先导出备份再清理）');
+      return false;
+    }
+  }
+
+  // 归一化一条知识库记录（纯函数）：字段转字符串、图片只保留 data:image/ 前缀；整条为空返回 null
+  function kbNormEntry(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const it = {
+      parent: String(raw.parent == null ? '' : raw.parent).trim(),
+      name: String(raw.name == null ? '' : raw.name).trim(),
+      server: String(raw.server == null ? '' : raw.server).trim(),
+      title: String(raw.title == null ? '' : raw.title).trim(),
+      note: String(raw.note == null ? '' : raw.note),
+      images: Array.isArray(raw.images) ? raw.images.filter((s) => typeof s === 'string' && s.indexOf('data:image/') === 0) : [],
+      ts: raw.ts == null ? '' : String(raw.ts)
+    };
+    if (!it.parent && !it.name && !it.server && !it.title && !it.note && !it.images.length) return null;
+    return it;
+  }
+
+  // 新建一条：结果页上自动预填 名称（语句里的 app=/product=）、Server/Title（侧栏排名第一）
+  function newKbEntry() {
+    const q = currentQuery() || '';
+    return {
+      id: Date.now(),
+      parent: '',
+      name: productFromQuery(q),
+      server: (grabRankingEntries('Server')[0] || {}).name || '',
+      title: (grabRankingEntries('网站标题')[0] || {}).name || '',
+      note: '', images: [],
+      ts: new Date().toLocaleString()
+    };
+  }
+
+  function kbFiltered(filter) {
+    const kw = String(filter || '').trim().toLowerCase();
+    const hit = (it) => !kw || [it.parent, it.name, it.server, it.title, it.note]
+      .some((v) => String(v || '').toLowerCase().includes(kw));
+    return loadKb().filter(hit)
+      .sort((a, b) => String(a.parent || '').localeCompare(String(b.parent || ''), 'zh')
+        || String(a.name || '').localeCompare(String(b.name || ''), 'zh'));
+  }
+
+  function renderKb(pane) {
+    const wrap = pane.querySelector('.fx-k-wrap');
+    if (!wrap) return;
+    const list = kbFiltered(pane.dataset.filter || '');
+    const rows = list.map((it) => `<tr data-id="${it.id}">${KB_FIELDS.map((f) =>
+      `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
+    ).join('')}
+      <td class="fx-k-imgs" tabindex="0" title="点击聚焦后 Ctrl+V 粘贴产品截图">${(it.images || []).map((src, i) =>
+        `<span class="fx-k-thumbwrap"><img class="fx-k-thumb" data-i="${i}" src="${src}" title="点击放大"><b class="fx-k-imgdel" data-i="${i}" title="删除此图">✕</b></span>`
+      ).join('')}<b class="fx-k-addimg" title="选择图片文件">📎</b>${(it.images || []).length ? '' : '<span class="fx-k-hint">点击后 Ctrl+V 粘贴</span>'}</td>
+      <td class="fx-l-ops"><b class="fx-k-del" title="删除此条">✕</b></td></tr>`).join('');
+    const cnt = pane.querySelector('.fx-l-count');
+    if (cnt) cnt.textContent = `共 ${list.length} 条`;
+    wrap.innerHTML = `<table class="fx-l-table">
+      <thead><tr>${KB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>产品截图</th><th>操作</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="${KB_FIELDS.length + 2}" class="fx-l-empty">暂无记录：点「＋ 新建」，在结果页会自动预填 Server/Title；截图列点击后 Ctrl+V 粘贴产品前端</td></tr>`}</tbody>
+    </table>`;
+  }
+
+  // 截图压缩：最长边 640、白底 JPEG（约几十 KB/张），避免撑爆 localStorage
+  function kbBlobToDataUrl(blob, cb) {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const MAXW = 640;
+      const scale = Math.min(1, MAXW / (img.naturalWidth || MAXW));
+      const w = Math.max(1, Math.round((img.naturalWidth || MAXW) * scale));
+      const h = Math.max(1, Math.round((img.naturalHeight || 360) * scale));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      cb(cv.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); cb(null); };
+    img.src = url;
+  }
+
+  function kbAddImage(pane, id, blob) {
+    kbBlobToDataUrl(blob, (data) => {
+      if (!data) { importToast('⚠️ 截图读取失败：不是有效的图片'); return; }
+      const arr = loadKb();
+      const it = arr.find((x) => String(x.id) === String(id));
+      if (!it) return;
+      it.images = it.images || [];
+      it.images.push(data);
+      if (saveKb(arr)) renderKb(pane);
+    });
+  }
+
+  // 点击缩略图全屏查看（点击任意处关闭；Esc 关灯箱优先于关工具箱）
+  function kbLightbox(src) {
+    const old = document.getElementById('fofa-kb-lightbox');
+    if (old) { old.remove(); return; }
+    const lb = document.createElement('div');
+    lb.id = 'fofa-kb-lightbox';
+    const im = document.createElement('img');
+    im.src = src;
+    lb.appendChild(im);
+    lb.addEventListener('click', () => lb.remove());
+    document.documentElement.appendChild(lb);
+  }
+
+  function kbImport(pane) {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.json,application/json';
+    inp.style.display = 'none';
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0];
+      inp.remove();
+      if (!f) return;
+      readImportText(f, (text) => {
+        if (text == null) { importToast('⚠️ 导入失败：文件读取错误'); return; }
+        let raws;
+        try { raws = JSON.parse(String(text).replace(/^\ufeff/, '')); }
+        catch (err) { importToast('⚠️ 导入失败：JSON 解析失败（' + esc(err.message) + '）'); return; }
+        if (!Array.isArray(raws)) { importToast('⚠️ 导入失败：JSON 内容不是知识库数组'); return; }
+        const arr = loadKb();
+        const ids = new Set(arr.map((x) => x.id));
+        const keyOf = (it) => [it.parent, it.name, it.server, it.title].join(' | ');
+        const seen = new Set(arr.map(keyOf));
+        let added = 0, skipped = 0;
+        for (const raw of raws) {
+          const it = kbNormEntry(raw);
+          if (!it) continue;
+          const k = keyOf(it);
+          if (seen.has(k)) { skipped++; continue; }
+          seen.add(k);
+          let id = Number(raw.id);
+          if (!raw.id || !Number.isFinite(id) || ids.has(id)) {
+            do { id = Date.now() + Math.floor(Math.random() * 1e6); } while (ids.has(id));
+          }
+          it.id = id;
+          ids.add(id);
+          arr.push(it);
+          added++;
+        }
+        if (added) saveKb(arr);
+        if (pane && pane.isConnected) renderKb(pane);
+        importToast(`✅ 知识库导入：新增 <b>${added}</b> 条，跳过 <b>${skipped}</b> 条（重复）`);
+      });
+    });
+    document.body.appendChild(inp);
+    inp.click();
+  }
+
+  function buildKb(pane) {
+    pane.innerHTML = `
+      <div class="fx-l-tools">
+        <input class="fx-k-search" placeholder="搜索：母厂 / 名称 / Server / Title / 备注" spellcheck="false">
+        <span class="fx-l-count">共 0 条</span>
+        <button class="fx-k-add" title="新建记录：结果页会自动预填 名称/Server/Title">＋ 新建</button>
+        <button class="fx-k-expj" title="导出为 JSON 文件（含截图）">导出 JSON</button>
+        <button class="fx-k-impj" title="从 JSON 文件导入（按 母厂+名称+Server+Title 去重合并）">导入</button>
+      </div>
+      <div class="fx-l-tablewrap fx-k-wrap"></div>
+      <div class="fx-l-foot">按「母厂/贴牌自」排序自然形成贴牌分组 · 搜「大华」即列出其下所有贴牌产品 · 截图列点击聚焦后 Ctrl+V 粘贴（自动压缩存储）· 数据保存在浏览器本地</div>`;
+    renderKb(pane);
+
+    // 单元格编辑保存（focusout 委托，与指纹库一致）
+    pane.addEventListener('focusout', (e) => {
+      const td = e.target.closest && e.target.closest('td[contenteditable][data-f]');
+      if (!td) return;
+      const arr = loadKb();
+      const it = arr.find((x) => String(x.id) === td.closest('tr').dataset.id);
+      if (!it) return;
+      it[td.dataset.f] = td.innerText.replace(/\u00a0/g, ' ').trim();
+      saveKb(arr);
+    });
+
+    // 搜索过滤（只重绘表格，输入框不动）
+    pane.querySelector('.fx-k-search').addEventListener('input', (e) => {
+      pane.dataset.filter = e.target.value;
+      renderKb(pane);
+    });
+
+    // 粘贴截图：点击截图列（tabindex 聚焦）后 Ctrl+V
+    pane.addEventListener('paste', (e) => {
+      const cell = e.target.closest && e.target.closest('.fx-k-imgs');
+      if (!cell) return;
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      let got = false;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.type && it.type.indexOf('image/') === 0) {
+          const blob = it.getAsFile();
+          if (blob) { got = true; kbAddImage(pane, cell.closest('tr').dataset.id, blob); }
+        }
+      }
+      if (got) e.preventDefault();
+    });
+
+    pane.addEventListener('click', (e) => {
+      const del = e.target.closest && e.target.closest('.fx-k-del');
+      if (del) {
+        saveKb(loadKb().filter((x) => String(x.id) !== del.closest('tr').dataset.id));
+        renderKb(pane);
+        return;
+      }
+      const imgdel = e.target.closest && e.target.closest('.fx-k-imgdel');
+      if (imgdel) {
+        const arr = loadKb();
+        const it = arr.find((x) => String(x.id) === imgdel.closest('tr').dataset.id);
+        if (it && it.images) {
+          it.images.splice(+imgdel.dataset.i, 1);
+          if (saveKb(arr)) renderKb(pane);
+        }
+        return;
+      }
+      const thumb = e.target.closest && e.target.closest('.fx-k-thumb');
+      if (thumb) {
+        const it = loadKb().find((x) => String(x.id) === thumb.closest('tr').dataset.id);
+        if (it && it.images && it.images[+thumb.dataset.i]) kbLightbox(it.images[+thumb.dataset.i]);
+        return;
+      }
+      const addimg = e.target.closest && e.target.closest('.fx-k-addimg');
+      if (addimg) {
+        const tr = addimg.closest('tr');
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = 'image/*';
+        inp.style.display = 'none';
+        inp.addEventListener('change', () => {
+          const f = inp.files && inp.files[0];
+          inp.remove();
+          if (f) kbAddImage(pane, tr.dataset.id, f);
+        });
+        document.body.appendChild(inp);
+        inp.click();
+        return;
+      }
+      if (e.target.closest('.fx-k-add')) {
+        const arr = loadKb();
+        arr.push(newKbEntry());
+        saveKb(arr);
+        const si = pane.querySelector('.fx-k-search'); // 清掉过滤，保证新行可见
+        if (si) { si.value = ''; pane.dataset.filter = ''; }
+        renderKb(pane);
+        const first = pane.querySelector('tbody td[contenteditable]');
+        if (first) first.focus();
+        return;
+      }
+      if (e.target.closest('.fx-k-expj')) {
+        downloadFile('fofa-toolbox-kb.json', JSON.stringify(loadKb(), null, 2), 'application/json');
+        return;
+      }
+      if (e.target.closest('.fx-k-impj')) { kbImport(pane); return; }
+    });
+  }
+
   /* ---------------- Alt + 左键拖拽：框选批量 ----------------
      框住一块区域后，识别其中所有可排除对象（侧栏排名条目/结果行 favicon/
      国旗/服务器图标/相关Icon），合并进批量面板，一次排除/包含。 */
@@ -1804,11 +2104,15 @@
     const p = document.getElementById('fofa-toolbox-stage-panel');
     if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-stage-bar'))) hideStagePanel();
     const lib = document.getElementById('fofa-toolbox-box');
-    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-btn,#fofa-imp-toast'))) closeToolbox(true);
+    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-btn,#fofa-imp-toast,#fofa-kb-lightbox'))) closeToolbox(true);
   }, true);
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { hideMenu(); hideStagePanel(); rubberStop(true); closeToolbox(true); }
+    if (e.key === 'Escape') {
+      const lb = document.getElementById('fofa-kb-lightbox');
+      if (lb) { lb.remove(); return; } // 灯箱开着时只关灯箱，不连带关工具箱
+      hideMenu(); hideStagePanel(); rubberStop(true); closeToolbox(true);
+    }
   }, true);
 
   // Alt+Q 开关工具箱；Alt+A / Alt+O 编辑器快捷键（编辑器标签页激活时）

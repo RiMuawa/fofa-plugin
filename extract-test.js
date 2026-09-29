@@ -214,5 +214,13 @@ eq('编辑器-复杂或组保留原样', groupsToQuery(parseQueryToGroups('(app=
 eq('编辑器-空语句', groupsToQuery(parseQueryToGroups('')), '');
 eq('编辑器-单条件加括号往返', groupsToQuery(parseQueryToGroups('(title="x")')), 'title="x"');
 
+// ===== 知识库：记录归一化 =====
+const kbNormEntry = eval('(0,' + grabFn('kbNormEntry').replace('function kbNormEntry', 'function') + ')');
+eq('知识库-归一化字段', JSON.stringify(kbNormEntry({ parent: ' 大华 ', name: 'X', images: ['data:image/jpeg;base64,AAA', 'http://evil/x.png', 42] })),
+  JSON.stringify({ parent: '大华', name: 'X', server: '', title: '', note: '', images: ['data:image/jpeg;base64,AAA'], ts: '' }));
+eq('知识库-空记录剔除', kbNormEntry({ images: [] }), null);
+eq('知识库-非对象剔除', kbNormEntry(null), null);
+eq('知识库-仅备注保留', kbNormEntry({ note: 'n' }).note, 'n');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
