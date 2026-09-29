@@ -113,7 +113,8 @@ eq('名称-并列则留空', pickName('', [{ name: '甲', count: '3000' }, { nam
 eq('名称-全无线索留空', pickName('', []), '');
 
 // ===== 置顶指纹与日期替换 =====
-const resolveQuery = eval('(function(){' + grabFn('fmtDate') + '\n' + grabFn('monthAgoOf') + '\n' + grabFn('resolveQuery') + '\nreturn resolveQuery;})()');
+const afterReSrc = /const AFTER_VAL_RE = ([^;]+);/.exec(src)[1];
+const resolveQuery = eval('(function(){const AFTER_VAL_RE = ' + afterReSrc + ';' + grabFn('fmtDate') + '\n' + grabFn('monthAgoOf') + '\n' + grabFn('substituteBuiltinSyntax') + '\n' + grabFn('resolveQuery') + '\nreturn resolveQuery;})()');
 const sep29 = new Date(2026, 8, 29); // 2026-09-29（用户示例的“今天”）
 eq('置顶-昨天替换', resolveQuery('after="YESTERDAY" && protocol="telnet" && "busybox"', false, sep29),
   'after="2026-09-28" && protocol="telnet" && "busybox"');
@@ -123,6 +124,15 @@ eq('普通语句-一月前', resolveQuery('after="2026-09-28" && app="Tengine"',
 eq('普通语句-原样', resolveQuery('after="2026-09-28" && app="Tengine"', false, sep29), 'after="2026-09-28" && app="Tengine"');
 eq('月末钳制', resolveQuery('after="2026-03-31"', true, new Date(2026, 2, 31)), 'after="2026-02-28"');
 eq('无after-一月前不变', resolveQuery('app="Tengine" && title="x"', true, sep29), 'app="Tengine" && title="x"');
+
+// ===== 内置语法：LastMonth / 作用域限定 =====
+const hasBuiltinSyntax = eval('(function(){const AFTER_VAL_RE = ' + afterReSrc + ';' + grabFn('hasBuiltinSyntax') + '\nreturn hasBuiltinSyntax;})()');
+eq('LastMonth替换', resolveQuery('after="LastMonth" && protocol="telnet"', false, sep29), 'after="2026-08-29" && protocol="telnet"');
+eq('大小写不敏感', resolveQuery('after="lastmonth"', false, sep29), 'after="2026-08-29"');
+eq('仅after内替换', resolveQuery('title="YESTERDAY news" && after="YESTERDAY"', false, sep29), 'title="YESTERDAY news" && after="2026-09-28"');
+eq('检测-内置语法', hasBuiltinSyntax('after="LastMonth" && app="X"'), true);
+eq('检测-普通语句', hasBuiltinSyntax('after="2026-09-28" && app="X"'), false);
+eq('检测-文本不含', hasBuiltinSyntax('title="yesterday"'), false);
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

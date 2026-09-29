@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 右键排除搜索
 // @namespace    fofa.exclude.menu
-// @version      3.5.0
+// @version      3.6.0
 // @description  FOFA 增强工具：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；指纹收藏库（记录搜索语句+IP数/厂商/型号/地区等，表格编辑、本地存储、JSON/CSV 导出）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.5.0';
+  const VER = '3.6.0';
 
   console.info(`[FOFA排除搜索] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -507,6 +507,20 @@
 #fofa-exclude-lib .fx-l-ops b.fx-l-del:hover{color:#e5484d}
 #fofa-exclude-lib tr.fx-l-pin td{background:#fffaf0;color:#57606a}
 #fofa-exclude-lib tr.fx-l-pin td:first-child{font-weight:600;color:#b25e09}
+#fofa-exclude-lib tr.fx-l-userpin td{background:#fffdf5}
+#fofa-exclude-lib .fx-l-ops b.fx-l-pinbtn:hover{color:#b25e09}
+#fofa-exclude-lib .fx-l-ops b.fx-l-pinbtn.on{color:#b25e09}
+#fofa-export-choice{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:2147483647;width:340px;
+  background:#fff;color:#24292f;border:1px solid #d0d7de;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.25);
+  padding:14px;font:12px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+#fofa-export-choice .fx-e-title{font-weight:600;margin-bottom:6px}
+#fofa-export-choice .fx-e-text{color:#57606a;margin-bottom:10px}
+#fofa-export-choice .fx-e-btns{display:flex;gap:6px;flex-wrap:wrap}
+#fofa-export-choice .fx-e-btns button{flex:1;border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;
+  padding:6px 8px;cursor:pointer;font:12px/1.4 inherit;color:#24292f;white-space:nowrap}
+#fofa-export-choice .fx-e-btns button:hover{background:#eef1f4}
+#fofa-export-choice .fx-e-resolve{background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
+#fofa-export-choice .fx-e-resolve:hover{background:#ffab2e;border-color:#ffab2e}
 #fofa-exclude-lib .fx-l-empty{color:#8b949e;text-align:center;padding:24px}
 #fofa-exclude-lib .fx-l-foot{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}`;
     document.head.appendChild(st);
@@ -907,9 +921,11 @@
     document.documentElement.appendChild(panel);
   }
 
-  /* ---------- 置顶指纹与日期替换 ----------
-     置顶指纹固定显示在最上方：YESTERDAY 占位符在搜索时替换为系统昨天的日期；
-     每行 📅 把语句中 after 的日期替换为系统时间的一个月前（月末日钳制，3月31日->2月28日）。 */
+  /* ---------- 置顶指纹与内置日期语法 ----------
+     内置占位语法（仅在 after 的值内识别，不误伤普通文本）：
+       YESTERDAY -> 系统昨天的日期；LastMonth -> 系统时间的一个月前（月末日钳制）；
+     每行 📅 把语句中 after 的日期整体替换为一月前再搜索；
+     操作栏 📌 可把任意条目置顶/取消置顶。 */
 
   const PIN_QUERY = 'after="YESTERDAY" && protocol="telnet" && "busybox"';
   const PIN_NAME = '📌 每日巡查（telnet busybox）';
@@ -926,23 +942,40 @@
     return fmtDate(first);
   }
 
-  // monthMode: 把 after 的日期值替换为一月前；随后统一替换 YESTERDAY 占位符为昨天
+  // 在 after 的值内替换内置占位语法（不区分大小写）
+  function substituteBuiltinSyntax(val, now) {
+    const yesterday = fmtDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+    return String(val || '')
+      .replace(/yesterday/gi, yesterday)
+      .replace(/lastmonth/gi, monthAgoOf(now));
+  }
+
+  const AFTER_VAL_RE = /(after\s*={1,2}(?!=)\s*")([^"]*)(")/g;
+
+  // monthMode: 把 after 的日期值整体替换为一月前；
+  // 否则仅在 after 值内替换 YESTERDAY / LastMonth 占位符
   function resolveQuery(q, monthMode, now) {
     now = now || new Date();
     let out = String(q || '');
-    if (monthMode) {
-      out = out.replace(/(after\s*={1,2}(?!=)\s*")[^"]*(")/g, (m, a, b) => a + monthAgoOf(now) + b);
-    }
-    out = out.replace(/YESTERDAY/g, fmtDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)));
+    out = out.replace(AFTER_VAL_RE, (m, a, val, b) => a + (monthMode ? monthAgoOf(now) : substituteBuiltinSyntax(val, now)) + b);
     return out;
+  }
+
+  // 语句里是否用到内置占位语法（导出前询问用）
+  function hasBuiltinSyntax(q) {
+    let hit = false;
+    String(q || '').replace(AFTER_VAL_RE, (m, a, val) => { if (/yesterday|lastmonth/i.test(val)) hit = true; return m; });
+    return hit;
   }
 
   function renderLib(panel) {
     const arr = loadLib();
+    // 用户置顶的条目排在前面（sort 稳定，保持原有顺序）
+    const sorted = arr.slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
     const pinRow = `<tr class="fx-l-pin"><td>${esc(PIN_NAME)}</td><td class="fx-l-mono">${esc(PIN_QUERY)}</td>${LIB_FIELDS.slice(2).map(() => '<td></td>').join('')}<td class="fx-l-ops"><b class="fx-l-search" title="搜索（YESTERDAY 自动替换为昨天日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b></td></tr>`;
-    const rows = arr.map((it) => `<tr data-id="${it.id}">${LIB_FIELDS.map((f) =>
+    const rows = sorted.map((it) => `<tr data-id="${it.id}"${it.pin ? ' class="fx-l-userpin"' : ''}>${LIB_FIELDS.map((f) =>
       `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
-    ).join('')}<td class="fx-l-ops"><b class="fx-l-search" title="用此语句搜索（YESTERDAY 替换为昨天）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
+    ).join('')}<td class="fx-l-ops"><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
     // 只负责渲染内容；事件在 openLib 里对 panel 挂一次（委托，重渲染不影响）
     panel.innerHTML = `
       <div class="fx-l-head">
@@ -958,7 +991,7 @@
         <thead><tr>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
         <tbody>${pinRow}${rows || `<tr><td colspan="${LIB_FIELDS.length + 1}" class="fx-l-empty">暂无收藏条目：在结果页右键菜单点 ⭐ 收藏当前语句，或点「新建」手动添加</td></tr>`}</tbody>
       </table></div>
-      <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 🔍 搜索（YESTERDAY=昨天） · 📅 after 改为一月前搜索 · 数据保存在浏览器本地（localStorage）</div>`;
+      <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 📌 置顶 · 🔍 搜索（after 内 YESTERDAY=昨天 / LastMonth=一月前） · 📅 after 改为一月前搜索 · 数据保存在浏览器本地（localStorage）</div>`;
   }
 
   // 事件只在 openLib 时对 panel 挂一次。绝不能放进 renderLib：
@@ -981,6 +1014,16 @@
       if (del) {
         const id = del.closest('tr').dataset.id;
         saveLib(loadLib().filter((x) => String(x.id) !== id));
+        renderLib(panel);
+        return;
+      }
+      // 📌：置顶/取消置顶
+      const pinBtn = e.target.closest && e.target.closest('.fx-l-pinbtn');
+      if (pinBtn) {
+        const id = pinBtn.closest('tr').dataset.id;
+        const arr2 = loadLib();
+        const it = arr2.find((x) => String(x.id) === id);
+        if (it) { it.pin = !it.pin; saveLib(arr2); }
         renderLib(panel);
         return;
       }
@@ -1017,16 +1060,45 @@
         if (first) { first.focus(); }
         return;
       }
-      if (e.target.closest('.fx-l-expj')) {
-        downloadFile('fofa-fingerprints.json', JSON.stringify(loadLib(), null, 2), 'application/json');
-        return;
-      }
-      if (e.target.closest('.fx-l-expc')) {
-        downloadFile('fofa-fingerprints.csv', libToCsv(loadLib()), 'text/csv');
-        return;
-      }
+      if (e.target.closest('.fx-l-expj')) { doExport('json'); return; }
+      if (e.target.closest('.fx-l-expc')) { doExport('csv'); return; }
       if (e.target.closest('.fx-l-close')) closeLib(true);
     });
+  }
+
+  // 导出：语句含内置语法（YESTERDAY / LastMonth）时询问处理方式
+  function doExport(kind) {
+    const arr = loadLib();
+    const run = (resolve) => {
+      const data = resolve
+        ? arr.map((it) => Object.assign({}, it, { query: resolveQuery(it.query, false) }))
+        : arr;
+      if (kind === 'json') downloadFile('fofa-fingerprints.json', JSON.stringify(data, null, 2), 'application/json');
+      else downloadFile('fofa-fingerprints.csv', libToCsv(data), 'text/csv');
+    };
+    if (arr.some((it) => hasBuiltinSyntax(it.query))) showExportChoice(run);
+    else run(false);
+  }
+
+  function showExportChoice(run) {
+    const old = document.getElementById('fofa-export-choice');
+    if (old) old.remove();
+    const dlg = document.createElement('div');
+    dlg.id = 'fofa-export-choice';
+    dlg.innerHTML = `
+      <div class="fx-e-title">导出选项</div>
+      <div class="fx-e-text">检测到搜索语句使用了内置语法（YESTERDAY / LastMonth）。导出时如何处理？</div>
+      <div class="fx-e-btns">
+        <button class="fx-e-resolve">替换为实际日期后导出</button>
+        <button class="fx-e-raw">直接导出（保留内置语法）</button>
+        <button class="fx-e-cancel">取消</button>
+      </div>`;
+    dlg.addEventListener('click', (e) => {
+      if (e.target.closest('.fx-e-resolve')) { dlg.remove(); run(true); }
+      else if (e.target.closest('.fx-e-raw')) { dlg.remove(); run(false); }
+      else if (e.target.closest('.fx-e-cancel')) dlg.remove();
+    });
+    document.documentElement.appendChild(dlg);
   }
 
   // 启动时清理“全部字段为空”的条目（修复历史监听器叠加 bug 产生的空行堆积）
