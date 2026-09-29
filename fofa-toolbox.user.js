@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.8.1
-// @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；指纹收藏库（记录搜索语句+IP数/厂商/型号/地区等，表格编辑、本地存储、JSON/CSV 导出与导入）。Shift+右键 = 原生菜单
+// @version      3.9.0
+// @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
 // @match        *://fofa.so/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.8.1';
+  const VER = '3.9.0';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -481,35 +481,35 @@
 #fofa-toolbox-stage-panel .fx-p-primary:hover{background:#ffab2e;border-color:#ffab2e}
 #fofa-toolbox-rubber{position:fixed;z-index:2147483646;border:1.5px dashed #f1961f;background:rgba(241,150,31,.12);
   pointer-events:none}
-#fofa-toolbox-lib-btn{position:fixed;left:12px;bottom:12px;z-index:2147483646;background:#fff;color:#57606a;
+#fofa-toolbox-btn{position:fixed;left:12px;bottom:12px;z-index:2147483646;background:#fff;color:#57606a;
   border:1px solid #d0d7de;border-radius:16px;padding:4px 12px;cursor:pointer;user-select:none;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.2)}
-#fofa-toolbox-lib-btn:hover{color:#f1961f;border-color:#f1961f}
-#fofa-toolbox-lib{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483647;width:1080px;
+#fofa-toolbox-btn:hover{color:#f1961f;border-color:#f1961f}
+#fofa-toolbox-box{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483647;width:1080px;
   max-width:94vw;max-height:84vh;display:flex;flex-direction:column;background:#fff;color:#24292f;border:1px solid #d0d7de;
   border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.22);overflow:hidden;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
-#fofa-toolbox-lib.fx-l-lower{top:62%}
-#fofa-toolbox-lib .fx-l-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eef1f4;cursor:move;user-select:none}
-#fofa-toolbox-lib .fx-l-title{font-weight:600}
-#fofa-toolbox-lib .fx-l-hbtns{display:flex;gap:6px}
-#fofa-toolbox-lib .fx-l-hbtns button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
+#fofa-toolbox-box.fx-l-lower{top:62%}
+#fofa-toolbox-box .fx-l-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eef1f4;cursor:move;user-select:none}
+#fofa-toolbox-box .fx-l-title{font-weight:600}
+#fofa-toolbox-box .fx-l-hbtns{display:flex;gap:6px}
+#fofa-toolbox-box .fx-l-hbtns button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
   cursor:pointer;font:12px/1.4 inherit;color:#24292f}
-#fofa-toolbox-lib .fx-l-hbtns button:hover{background:#eef1f4}
-#fofa-toolbox-lib .fx-l-tablewrap{overflow:auto;flex:1}
-#fofa-toolbox-lib .fx-l-table{border-collapse:collapse;width:100%}
-#fofa-toolbox-lib .fx-l-table th{position:sticky;top:0;background:#f6f8fa;color:#57606a;font-weight:600;text-align:left;
+#fofa-toolbox-box .fx-l-hbtns button:hover{background:#eef1f4}
+#fofa-toolbox-box .fx-l-tablewrap{overflow:auto;flex:1}
+#fofa-toolbox-box .fx-l-table{border-collapse:collapse;width:100%}
+#fofa-toolbox-box .fx-l-table th{position:sticky;top:0;background:#f6f8fa;color:#57606a;font-weight:600;text-align:left;
   padding:6px 8px;border-bottom:1px solid #eef1f4;white-space:nowrap}
-#fofa-toolbox-lib .fx-l-table td{padding:5px 8px;border-bottom:1px solid #f0f2f5;vertical-align:top;word-break:break-all}
-#fofa-toolbox-lib .fx-l-table td[contenteditable]:focus{outline:1.5px solid #f1961f;outline-offset:-1.5px;background:#fffdf5}
-#fofa-toolbox-lib .fx-l-mono{font-family:Consolas,Menlo,monospace;font-size:11px}
-#fofa-toolbox-lib .fx-l-ops b{cursor:pointer;color:#8b949e;font-weight:400;margin-right:6px}
-#fofa-toolbox-lib .fx-l-ops b.fx-l-search:hover{color:#f1961f}
-#fofa-toolbox-lib .fx-l-ops b.fx-l-cal:hover{color:#f1961f}
-#fofa-toolbox-lib .fx-l-ops b.fx-l-del:hover{color:#e5484d}
-#fofa-toolbox-lib .fx-l-ops b.fx-l-pinbtn:hover{color:#b25e09}
-#fofa-toolbox-lib .fx-l-ops b.fx-l-pinbtn.on{color:#b25e09}
-#fofa-toolbox-lib tr.fx-l-userpin td{background:#fffdf5}
+#fofa-toolbox-box .fx-l-table td{padding:5px 8px;border-bottom:1px solid #f0f2f5;vertical-align:top;word-break:break-all}
+#fofa-toolbox-box .fx-l-table td[contenteditable]:focus{outline:1.5px solid #f1961f;outline-offset:-1.5px;background:#fffdf5}
+#fofa-toolbox-box .fx-l-mono{font-family:Consolas,Menlo,monospace;font-size:11px}
+#fofa-toolbox-box .fx-l-ops b{cursor:pointer;color:#8b949e;font-weight:400;margin-right:6px}
+#fofa-toolbox-box .fx-l-ops b.fx-l-search:hover{color:#f1961f}
+#fofa-toolbox-box .fx-l-ops b.fx-l-cal:hover{color:#f1961f}
+#fofa-toolbox-box .fx-l-ops b.fx-l-del:hover{color:#e5484d}
+#fofa-toolbox-box .fx-l-ops b.fx-l-pinbtn:hover{color:#b25e09}
+#fofa-toolbox-box .fx-l-ops b.fx-l-pinbtn.on{color:#b25e09}
+#fofa-toolbox-box tr.fx-l-userpin td{background:#fffdf5}
 #fofa-export-choice{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:2147483647;width:340px;
   background:#fff;color:#24292f;border:1px solid #d0d7de;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.25);
   padding:14px;font:12px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
@@ -525,8 +525,54 @@
   background:#fff;color:#24292f;border:1px solid #d0d7de;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.22);
   padding:10px 14px;font:12px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;cursor:pointer}
 #fofa-imp-toast b{color:#b25e09}
-#fofa-toolbox-lib .fx-l-empty{color:#8b949e;text-align:center;padding:24px}
-#fofa-toolbox-lib .fx-l-foot{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}`;
+#fofa-toolbox-box .fx-l-empty{color:#8b949e;text-align:center;padding:24px}
+#fofa-toolbox-box .fx-l-foot{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}
+#fofa-toolbox-box .fx-t-tabs{display:flex;gap:4px;margin-left:12px;flex:1}
+#fofa-toolbox-box .fx-t-tab{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:3px 10px;
+  cursor:pointer;font:12px/1.4 inherit;color:#57606a;white-space:nowrap}
+#fofa-toolbox-box .fx-t-tab:hover{background:#eef1f4}
+#fofa-toolbox-box .fx-t-tab.on{background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
+#fofa-toolbox-box .fx-t-body{flex:1;min-height:0;display:flex;flex-direction:column}
+#fofa-toolbox-box .fx-t-pane{display:none;flex:1;min-height:0;flex-direction:column}
+#fofa-toolbox-box .fx-t-pane.on{display:flex}
+#fofa-toolbox-box .fx-l-tools{display:flex;gap:6px;padding:8px 12px 0;flex-wrap:wrap;align-items:center}
+#fofa-toolbox-box .fx-l-count{color:#8b949e;font-size:11px;margin-right:2px}
+#fofa-toolbox-box .fx-l-tools button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
+  cursor:pointer;font:12px/1.4 inherit;color:#24292f;white-space:nowrap}
+#fofa-toolbox-box .fx-l-tools button:hover{background:#eef1f4}
+#fofa-toolbox-box .fx-e-quick{display:flex;gap:6px;padding:8px 12px 0;flex-wrap:wrap}
+#fofa-toolbox-box .fx-e-quick button,#fofa-toolbox-box .fx-e-adds button,#fofa-toolbox-box .fx-e-actions button{border:1px solid #d0d7de;
+  background:#f6f8fa;border-radius:6px;padding:4px 10px;cursor:pointer;font:12px/1.4 inherit;color:#24292f;white-space:nowrap}
+#fofa-toolbox-box .fx-e-quick button:hover,#fofa-toolbox-box .fx-e-adds button:hover,#fofa-toolbox-box .fx-e-actions button:hover{background:#eef1f4}
+#fofa-toolbox-box .fx-e-quick button.on{background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
+#fofa-toolbox-box .fx-e-groups{flex:1;min-height:0;overflow:auto;padding:8px 12px;display:flex;flex-direction:column;gap:6px}
+#fofa-toolbox-box .fx-e-empty{color:#8b949e;text-align:center;padding:24px}
+#fofa-toolbox-box .fx-e-group{border:1px solid #eef1f4;border-radius:8px;padding:5px 8px}
+#fofa-toolbox-box .fx-e-group.or{border-color:rgba(241,150,31,.55)}
+#fofa-toolbox-box .fx-e-ghead{display:flex;align-items:center;gap:6px;color:#8b949e;font-size:10px;margin-bottom:2px}
+#fofa-toolbox-box .fx-e-and{color:#b25e09;font-weight:600;font-size:11px}
+#fofa-toolbox-box .fx-e-gops{margin-left:auto;display:flex;gap:6px}
+#fofa-toolbox-box .fx-e-gops b{cursor:pointer;color:#8b949e;font-weight:400}
+#fofa-toolbox-box .fx-e-gops b.fx-e-grow:hover{color:#f1961f}
+#fofa-toolbox-box .fx-e-gops b.fx-e-gdel:hover{color:#e5484d}
+#fofa-toolbox-box .fx-e-row{display:flex;align-items:center;gap:4px;margin:2px 0}
+#fofa-toolbox-box .fx-e-row input,#fofa-toolbox-box .fx-e-row select{border:1px solid #d0d7de;border-radius:6px;
+  padding:3px 6px;font:12px/1.4 Consolas,Menlo,monospace;color:#24292f;background:#fff;box-sizing:content-box}
+#fofa-toolbox-box .fx-e-row input.fld{width:118px}
+#fofa-toolbox-box .fx-e-row input.val{flex:1;min-width:80px}
+#fofa-toolbox-box .fx-e-row input.raw{flex:1;min-width:80px}
+#fofa-toolbox-box .fx-e-row select{padding:3px 2px}
+#fofa-toolbox-box .fx-e-row b{cursor:pointer;color:#8b949e;font-weight:400;padding:0 3px}
+#fofa-toolbox-box .fx-e-row b:hover{color:#e5484d}
+#fofa-toolbox-box .fx-e-or{color:#b25e09;font-size:11px;padding:0 2px}
+#fofa-toolbox-box .fx-e-tag{color:#8b949e;font-size:10px;white-space:nowrap}
+#fofa-toolbox-box .fx-e-adds{display:flex;gap:6px;padding:6px 12px 0}
+#fofa-toolbox-box .fx-e-preview{margin:8px 12px 0;padding:6px 8px;background:#f6f8fa;border-radius:6px;color:#57606a;
+  font-family:Consolas,Menlo,monospace;font-size:11px;word-break:break-all;max-height:72px;overflow:auto}
+#fofa-toolbox-box .fx-e-actions{display:flex;gap:6px;padding:8px 12px}
+#fofa-toolbox-box .fx-e-actions .fx-e-search{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
+#fofa-toolbox-box .fx-e-actions .fx-e-search:hover{background:#ffab2e;border-color:#ffab2e}
+#fofa-toolbox-box .fx-e-hint{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}`;
       (document.head || document.documentElement).appendChild(toolboxStyle);
     }
   }
@@ -850,13 +896,13 @@
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
 
-  let libUserClosed = false; // 用户手动关过后，本页面会话不再自动弹出
+  let boxUserClosed = false; // 用户手动关过后，本页面会话不再自动弹出
   const LIB_POS_KEY = 'fofa-lib-pos';
   let libDrag = null; // {panel, dx, dy} 拖动状态（move/up 监听在 document 上，只注册一次）
 
-  function closeLib(byUser) {
-    if (byUser) libUserClosed = true;
-    const p = document.getElementById('fofa-toolbox-lib');
+  function closeToolbox(byUser) {
+    if (byUser) boxUserClosed = true;
+    const p = document.getElementById('fofa-toolbox-box');
     if (p) p.remove();
   }
 
@@ -881,7 +927,7 @@
     panel.style.transform = '';
   }
 
-  function attachLibDrag(panel) {
+  function attachToolboxDrag(panel) {
     // mousedown 委托在 panel 上（renderLib 重建内容不影响）；
     // 标题栏为拖动手柄，按钮区域不触发
     panel.addEventListener('mousedown', (e) => {
@@ -920,17 +966,49 @@
     } catch (e) { /* ignore */ }
   }, true);
 
-  function openLib(lower) {
-    closeLib(false);
+  let toolboxTab = 'lib'; // 上次使用的标签页：lib=指纹库 edit=查询编辑器
+
+  function openToolbox(lower, tab) {
+    closeToolbox(false);
     injectStyle();
     const panel = document.createElement('div');
-    panel.id = 'fofa-toolbox-lib';
+    panel.id = 'fofa-toolbox-box';
     if (lower) panel.classList.add('fx-l-lower'); // 首页：中间偏下
-    renderLib(panel);
-    attachLibEvents(panel); // 只挂一次
-    attachLibDrag(panel);
+    panel.innerHTML = `
+      <div class="fx-l-head">
+        <span class="fx-l-title">🧰 FOFA 工具箱</span>
+        <span class="fx-t-tabs">
+          <button class="fx-t-tab fx-t-tab-lib" title="指纹收藏库">🗂 指纹库</button>
+          <button class="fx-t-tab fx-t-tab-edit" title="结构化编辑当前搜索语句并发起查询">✏️ 查询编辑器</button>
+        </span>
+        <span class="fx-l-hbtns"><button class="fx-l-close" title="收起工具箱（Esc）">关闭</button></span>
+      </div>
+      <div class="fx-t-body">
+        <div class="fx-t-pane fx-t-pane-lib"></div>
+        <div class="fx-t-pane fx-t-pane-edit"></div>
+      </div>`;
+    renderLib(panel.querySelector('.fx-t-pane-lib'));
+    attachLibEvents(panel.querySelector('.fx-t-pane-lib')); // 只挂一次
+    buildEditor(panel.querySelector('.fx-t-pane-edit'));
+    panel.querySelector('.fx-l-close').addEventListener('click', () => closeToolbox(true));
+    panel.querySelectorAll('.fx-t-tab').forEach((b) =>
+      b.addEventListener('click', () => switchTab(b.classList.contains('fx-t-tab-edit') ? 'edit' : 'lib')));
+    attachToolboxDrag(panel);
     applySavedLibPos(panel);
     document.documentElement.appendChild(panel);
+    switchTab(tab || toolboxTab);
+  }
+
+  function switchTab(tab) {
+    toolboxTab = tab;
+    const box = document.getElementById('fofa-toolbox-box');
+    if (!box) return;
+    box.querySelector('.fx-t-tab-lib').classList.toggle('on', tab === 'lib');
+    box.querySelector('.fx-t-tab-edit').classList.toggle('on', tab === 'edit');
+    box.querySelector('.fx-t-pane-lib').classList.toggle('on', tab === 'lib');
+    box.querySelector('.fx-t-pane-edit').classList.toggle('on', tab === 'edit');
+    // 页面语句变了（如搜索后跳转/新标签返回）就重读，未变则保留用户当前编辑
+    if (tab === 'edit' && currentQuery() !== editLastParsed) parseEditorFromPage();
   }
 
   /* ---------- 内置日期语法 ----------
@@ -977,24 +1055,21 @@
     return hit;
   }
 
-  function renderLib(panel) {
+  function renderLib(pane) {
     const arr = loadLib();
     // 用户置顶的条目排在前面（sort 稳定，保持原有顺序）
     const sorted = arr.slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
     const rows = sorted.map((it) => `<tr data-id="${it.id}"${it.pin ? ' class="fx-l-userpin"' : ''}>${LIB_FIELDS.map((f) =>
       `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
     ).join('')}<td class="fx-l-ops"><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
-    // 只负责渲染内容；事件在 openLib 里对 panel 挂一次（委托，重渲染不影响）
-    panel.innerHTML = `
-      <div class="fx-l-head">
-        <span class="fx-l-title">🗂 指纹收藏库（${arr.length}）</span>
-        <span class="fx-l-hbtns">
-          <button class="fx-l-add" title="新建条目：结果页会自动填写当前语句与排名信息，否则为空白">＋ 新建</button>
-          <button class="fx-l-expj" title="导出为 JSON 文件">导出 JSON</button>
-          <button class="fx-l-expc" title="导出为 CSV 文件（Excel 可直接打开）">导出 CSV</button>
-          <button class="fx-l-imp" title="从本脚本导出的 JSON/CSV 文件导入（Excel 另存的 GBK 编码 CSV 也能识别）：按搜索语句去重，已存在的自动跳过">导入</button>
-          <button class="fx-l-close">关闭</button>
-        </span>
+    // 只负责渲染内容；事件在 openToolbox 里对 pane 挂一次（委托，重渲染不影响）
+    pane.innerHTML = `
+      <div class="fx-l-tools">
+        <span class="fx-l-count">共 ${arr.length} 条</span>
+        <button class="fx-l-add" title="新建条目：结果页会自动填写当前语句与排名信息，否则为空白">＋ 新建</button>
+        <button class="fx-l-expj" title="导出为 JSON 文件">导出 JSON</button>
+        <button class="fx-l-expc" title="导出为 CSV 文件（Excel 可直接打开）">导出 CSV</button>
+        <button class="fx-l-imp" title="从本脚本导出的 JSON/CSV 文件导入（Excel 另存的 GBK 编码 CSV 也能识别）：按搜索语句去重，已存在的自动跳过">导入</button>
       </div>
       <div class="fx-l-tablewrap"><table class="fx-l-table">
         <thead><tr>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
@@ -1003,11 +1078,11 @@
       <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 📌 置顶 · 🔍 搜索（after 内 YESTERDAY=昨天 / LastMonth=一月前） · 📅 after 改为一月前搜索 · 数据保存在浏览器本地（localStorage）</div>`;
   }
 
-  // 事件只在 openLib 时对 panel 挂一次。绝不能放进 renderLib：
+  // 事件只在 openToolbox 时对 pane 挂一次。绝不能放进 renderLib：
   // renderLib 会被自身操作反复调用，重复挂载监听器会指数叠加（曾导致空条目爆炸、页面卡死）
-  function attachLibEvents(panel) {
+  function attachLibEvents(pane) {
     // 单元格编辑（focusout 冒泡，一次委托即可）
-    panel.addEventListener('focusout', (e) => {
+    pane.addEventListener('focusout', (e) => {
       const td = e.target.closest && e.target.closest('td[contenteditable][data-f]');
       if (!td) return;
       const tr = td.closest('tr');
@@ -1018,12 +1093,12 @@
       saveLib(arr2);
     });
 
-    panel.addEventListener('click', (e) => {
+    pane.addEventListener('click', (e) => {
       const del = e.target.closest && e.target.closest('.fx-l-del');
       if (del) {
         const id = del.closest('tr').dataset.id;
         saveLib(loadLib().filter((x) => String(x.id) !== id));
-        renderLib(panel);
+        renderLib(pane);
         return;
       }
       // 📌：置顶/取消置顶
@@ -1033,7 +1108,7 @@
         const arr2 = loadLib();
         const it = arr2.find((x) => String(x.id) === id);
         if (it) { it.pin = !it.pin; saveLib(arr2); }
-        renderLib(panel);
+        renderLib(pane);
         return;
       }
       // 📅：after 替换为一月前再搜索
@@ -1060,15 +1135,14 @@
           arr2.unshift(blank);
         }
         saveLib(arr2);
-        renderLib(panel);
-        const first = panel.querySelector('tbody td[contenteditable]');
+        renderLib(pane);
+        const first = pane.querySelector('tbody td[contenteditable]');
         if (first) { first.focus(); }
         return;
       }
       if (e.target.closest('.fx-l-expj')) { doExport('json'); return; }
       if (e.target.closest('.fx-l-expc')) { doExport('csv'); return; }
-      if (e.target.closest('.fx-l-imp')) { doImport(panel); return; }
-      if (e.target.closest('.fx-l-close')) closeLib(true);
+      if (e.target.closest('.fx-l-imp')) { doImport(pane); return; }
     });
   }
 
@@ -1256,28 +1330,326 @@
     } catch (e) { /* ignore */ }
   })();
 
-  function ensureLibBtn() {
-    if (document.getElementById('fofa-toolbox-lib-btn')) return;
+  function ensureToolboxBtn() {
+    if (document.getElementById('fofa-toolbox-btn')) return;
     const b = document.createElement('div');
-    b.id = 'fofa-toolbox-lib-btn';
-    b.textContent = '🗂 指纹库';
-    b.title = '打开指纹收藏库';
+    b.id = 'fofa-toolbox-btn';
+    b.textContent = '🧰 工具箱';
+    b.title = '打开工具箱（Alt+Q）：指纹库 / 查询编辑器';
     b.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (document.getElementById('fofa-toolbox-lib')) closeLib(true); else openLib();
+      if (document.getElementById('fofa-toolbox-box')) closeToolbox(true); else openToolbox();
     });
     document.documentElement.appendChild(b);
   }
-  setInterval(() => { injectStyle(); ensureLibBtn(); }, 2000); // SPA 重渲染/注水后补回样式与按钮
-  ensureLibBtn();
+  setInterval(() => { injectStyle(); ensureToolboxBtn(); }, 2000); // SPA 重渲染/注水后补回样式与按钮
+  ensureToolboxBtn();
 
-  // 首页（fofa.info 根路径）默认自动打开指纹库，居中偏下显示；
+  // 首页（fofa.info 根路径）默认自动打开工具箱（指纹库标签页），居中偏下显示；
   // 用户手动关闭过则本页面会话内不再自动弹出
   setInterval(() => {
-    if (libUserClosed) return;
+    if (boxUserClosed) return;
     const home = location.pathname === '/' || location.pathname === '';
-    if (home && !document.getElementById('fofa-toolbox-lib')) openLib(true);
+    if (home && !document.getElementById('fofa-toolbox-box')) openToolbox(true);
   }, 1500);
+
+  /* ---------------- 查询编辑器（工具箱第二个标签页） ----------------
+     把当前语句拆成结构化条件：顶层按 && 得到条件组，组内按 || 得到行；
+     行 = 字段/运算符/值，裸关键词（"xxx"）单独一类，识别不了的片段原样保留（raw 行）。
+     快速开关：📅 一个月内（after=一月前，月末钳制）、☁️ 排除云服务（is_cloud="false"，
+     兼容识别旧语句里的 is_cloude 写法）。快捷键：Alt+A 新增且条件组、Alt+O 在焦点行后
+     追加或条件（继承字段），编辑器内回车直接搜索。 */
+
+  const EDITOR_FIELDS = ['title','host','ip','port','country','region','city','asn','org','domain',
+    'protocol','server','product','app','category','icon_hash','header','body','cert','cert.subject.org',
+    'cert.subject.cn','after','before','is_cloud','is_domain','is_ipv6','status_code','type','fid','header_hash'];
+
+  // 顶层按 || 切分（跳过引号与括号内的 ||），结构与 splitTop 相同
+  function splitOrTop(q) {
+    const parts = [];
+    let depth = 0, inStr = false, buf = '';
+    for (let i = 0; i < q.length; i++) {
+      const c = q[i];
+      if (inStr) { buf += c; if (c === '"') inStr = false; continue; }
+      if (c === '"') { inStr = true; buf += c; continue; }
+      if (c === '(') { depth++; buf += c; continue; }
+      if (c === ')') { depth--; buf += c; continue; }
+      if (depth === 0 && c === '|' && q[i + 1] === '|') { parts.push(buf.trim()); buf = ''; i++; continue; }
+      buf += c;
+    }
+    parts.push(buf.trim());
+    return parts.filter(Boolean);
+  }
+
+  // 剥掉真正包裹整个表达式的最外层括号（引号里的括号不误判，中途闭合的不剥）
+  function stripWrapParens(s) {
+    s = String(s).trim();
+    if (!(s.startsWith('(') && s.endsWith(')'))) return s;
+    let depth = 0, inStr = false;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (inStr) { if (c === '"') inStr = false; continue; }
+      if (c === '"') { inStr = true; continue; }
+      if (c === '(') depth++;
+      else if (c === ')') { depth--; if (depth === 0 && i < s.length - 1) return s; }
+    }
+    return depth === 0 ? s.slice(1, -1).trim() : s;
+  }
+
+  // 单个条件 -> 行对象；裸关键词 -> field 为空；识别不了 -> null（由调用方落为 raw 行）
+  function parseCondOne(s) {
+    s = String(s).trim();
+    const kw = /^"([^"]*)"$/.exec(s);
+    if (kw) return { field: '', op: '', value: kw[1] };
+    const m = /^([A-Za-z_][\w.]*)\s*(==|!=|=)\s*([\s\S]*)$/.exec(s);
+    if (!m) return null;
+    let v = m[3].trim();
+    if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+    return { field: m[1], op: m[2], value: v };
+  }
+
+  function parseQueryToGroups(q) {
+    const groups = [];
+    for (const part of splitTop(String(q || '').trim())) {
+      const alts = splitOrTop(stripWrapParens(part)).filter(Boolean);
+      if (!alts.length) continue;
+      if (alts.length === 1) {
+        groups.push([parseCondOne(alts[0]) || { raw: part }]);
+        continue;
+      }
+      groups.push(alts.map((a) => parseCondOne(a) || { raw: a }));
+    }
+    return groups;
+  }
+
+  function rowToQuery(r) {
+    if (r.raw != null) return String(r.raw).trim();
+    if (!r.field) return r.value ? `"${r.value}"` : '';
+    return r.value === '' ? '' : `${r.field}${r.op}"${r.value}"`;
+  }
+
+  function groupsToQuery(groups) {
+    const parts = [];
+    for (const g of groups) {
+      const alts = g.map(rowToQuery).filter(Boolean);
+      if (!alts.length) continue;
+      parts.push(alts.length === 1 ? alts[0] : '(' + alts.join(' || ') + ')');
+    }
+    return parts.join(' && ');
+  }
+
+  let editGroups = [];     // [[行, ...], ...] 顶层 && 的条件组，组内 || 
+  let editFocus = null;    // {gi, ri} 最近聚焦的行（Alt+O 的插入位置参考）
+  let editLastParsed = null; // 上次读取时的页面语句（变了才重读，保留用户编辑）
+
+  function parseEditorFromPage() {
+    editLastParsed = currentQuery();
+    editGroups = parseQueryToGroups(editLastParsed);
+    editFocus = null;
+    const box = document.getElementById('fofa-toolbox-box');
+    if (box) { renderEditorRows(box); updateEditorState(box); }
+  }
+
+  function renderEditorRows(scope) {
+    const wrap = scope.querySelector('.fx-e-groups');
+    if (!wrap) return;
+    if (!editGroups.length) {
+      wrap.innerHTML = '<div class="fx-e-empty">（无条件）：点上方快速开关，或 Alt+A / Alt+O 添加</div>';
+      return;
+    }
+    let html = '';
+    editGroups.forEach((g, gi) => {
+      const or = g.length > 1;
+      html += `<div class="fx-e-group${or ? ' or' : ''}" data-gi="${gi}">
+        <div class="fx-e-ghead">
+          ${gi > 0 ? '<span class="fx-e-and">且 &&</span>' : '<span class="fx-e-tag">条件组</span>'}
+          ${or ? '<span class="fx-e-tag">( 组内任一匹配 )</span>' : ''}
+          <span class="fx-e-gops"><b class="fx-e-grow" title="在本组追加一条或条件">＋或</b><b class="fx-e-gdel" title="删除整组">✕组</b></span>
+        </div>`;
+      g.forEach((r, ri) => {
+        if (ri > 0) html += '<span class="fx-e-or">‖ 或</span>';
+        const del = `<b class="fx-e-rdel" data-gi="${gi}" data-ri="${ri}" title="删除此行">✕</b>`;
+        if (r.raw != null) {
+          html += `<div class="fx-e-row"><span class="fx-e-tag">原样</span><input class="raw" data-gi="${gi}" data-ri="${ri}" data-f="raw" value="${esc(r.raw)}" spellcheck="false">${del}</div>`;
+        } else if (!r.field) {
+          html += `<div class="fx-e-row"><span class="fx-e-tag">关键词</span><input class="val" data-gi="${gi}" data-ri="${ri}" data-f="value" value="${esc(r.value)}" placeholder="关键词" spellcheck="false">${del}</div>`;
+        } else {
+          html += `<div class="fx-e-row">
+            <input class="fld" list="fofa-edit-fields" data-gi="${gi}" data-ri="${ri}" data-f="field" value="${esc(r.field)}" spellcheck="false">
+            <select data-gi="${gi}" data-ri="${ri}" data-f="op" title="运算符">
+              <option value="="${r.op === '=' ? ' selected' : ''}>模糊 =</option>
+              <option value="=="${r.op === '==' ? ' selected' : ''}>精确 ==</option>
+              <option value="!="${r.op === '!=' ? ' selected' : ''}>排除 !=</option>
+            </select>
+            <input class="val" data-gi="${gi}" data-ri="${ri}" data-f="value" value="${esc(r.value)}" spellcheck="false">
+            ${del}
+          </div>`;
+        }
+      });
+      html += '</div>';
+    });
+    wrap.innerHTML = html;
+  }
+
+  function updateEditorState(scope) {
+    const q = groupsToQuery(editGroups);
+    const prev = scope.querySelector('.fx-e-preview');
+    if (prev) prev.textContent = q || '（空语句）';
+    const hasField = (name) => editGroups.some((g) => g.some((r) => r.raw == null && r.field === name));
+    const mb = scope.querySelector('.fx-e-qmonth');
+    if (mb) mb.classList.toggle('on', hasField('after'));
+    const cb = scope.querySelector('.fx-e-qcloud');
+    if (cb) cb.classList.toggle('on', hasField('is_cloud') || hasField('is_cloude'));
+    const sb = scope.querySelector('.fx-e-search');
+    if (sb) { sb.disabled = !q; sb.style.opacity = q ? '' : '.5'; }
+  }
+
+  // 快速开关：再点一次移除；云服务行兼容 is_cloud / is_cloude 两种写法
+  function toggleQuick(kind) {
+    const isIt = (r) => r.raw == null && (kind === 'month'
+      ? r.field === 'after'
+      : (r.field === 'is_cloud' || r.field === 'is_cloude'));
+    if (editGroups.some((g) => g.some(isIt))) {
+      editGroups = editGroups.map((g) => g.filter((r) => !isIt(r))).filter((g) => g.length);
+    } else if (kind === 'month') {
+      editGroups.push([{ field: 'after', op: '=', value: monthAgoOf(new Date()) }]);
+    } else {
+      editGroups.push([{ field: 'is_cloud', op: '=', value: 'false' }]);
+    }
+    editFocus = null;
+    const box = document.getElementById('fofa-toolbox-box');
+    if (box) { renderEditorRows(box); updateEditorState(box); }
+  }
+
+  function focusEditorRow(scope, gi, ri, which) {
+    const el = scope.querySelector(`[data-gi="${gi}"][data-ri="${ri}"][data-f="${which}"]`);
+    if (el) el.focus();
+  }
+
+  // Alt+A 新增且(&&)条件组；Alt+O 在焦点行（无则末行）后追加或(||)条件，继承其字段与运算符
+  function addEditorRow(kind) {
+    const pane = document.querySelector('#fofa-toolbox-box .fx-t-pane-edit');
+    if (!pane) return;
+    if (kind === 'or' && editGroups.length) {
+      const fg = editFocus && editGroups[editFocus.gi];
+      const src = (fg && fg[editFocus.ri]) || editGroups[editGroups.length - 1].slice(-1)[0];
+      const row = src && src.raw == null && src.field
+        ? { field: src.field, op: src.op === '!=' ? '=' : src.op, value: '' }
+        : { field: '', op: '=', value: '' };
+      let gi, ri;
+      if (fg && fg[editFocus.ri]) {
+        gi = editFocus.gi; ri = editFocus.ri + 1;
+        editGroups[gi].splice(ri, 0, row);
+      } else {
+        gi = editGroups.length - 1;
+        editGroups[gi].push(row);
+        ri = editGroups[gi].length - 1;
+      }
+      renderEditorRows(pane); updateEditorState(pane);
+      focusEditorRow(pane, gi, ri, row.field ? 'value' : 'field');
+      return;
+    }
+    const row = { field: '', op: '=', value: '' };
+    let gi = editGroups.length;
+    if (editFocus && editGroups[editFocus.gi]) gi = editFocus.gi + 1; // 插到焦点组之后
+    editGroups.splice(gi, 0, [row]);
+    renderEditorRows(pane); updateEditorState(pane);
+    focusEditorRow(pane, gi, 0, 'field');
+  }
+
+  function buildEditor(pane) {
+    pane.innerHTML = `
+      <datalist id="fofa-edit-fields">${EDITOR_FIELDS.map((f) => `<option value="${f}"></option>`).join('')}</datalist>
+      <div class="fx-e-quick">
+        <button class="fx-e-qmonth" title="切换 after=一月内条件（再点一次移除，月末钳制）">📅 一个月内</button>
+        <button class="fx-e-qcloud" title="切换 is_cloud=&quot;false&quot; 排除云服务（兼容识别 is_cloude 写法；再点一次移除）">☁️ 排除云服务</button>
+        <button class="fx-e-reload" title="放弃当前编辑，重新读取页面语句">↻ 重读语句</button>
+      </div>
+      <div class="fx-e-groups"></div>
+      <div class="fx-e-adds">
+        <button class="fx-e-andb" title="新增一个且(&&;)条件组（Alt+A）">＋ 且条件 Alt+A</button>
+        <button class="fx-e-orb" title="在焦点行后追加或(||)条件，自动继承该行字段（Alt+O）">＋ 或条件 Alt+O</button>
+      </div>
+      <div class="fx-e-preview"></div>
+      <div class="fx-e-actions">
+        <button class="fx-e-search" title="按预览语句发起查询（编辑器内回车同）">🔍 搜索</button>
+        <button class="fx-e-copy" title="复制预览语句">📋 复制</button>
+      </div>
+      <div class="fx-e-hint">组间是且(&amp;&amp;)、组内是或(||) · 行＝字段/运算符/值 · 回车搜索 · Alt+Q 开关工具箱 · 搜索遵循「在本页打开」设置</div>`;
+
+    pane.querySelector('.fx-e-qmonth').addEventListener('click', () => toggleQuick('month'));
+    pane.querySelector('.fx-e-qcloud').addEventListener('click', () => toggleQuick('cloud'));
+    pane.querySelector('.fx-e-reload').addEventListener('click', () => parseEditorFromPage());
+    pane.querySelector('.fx-e-andb').addEventListener('click', () => addEditorRow('and'));
+    pane.querySelector('.fx-e-orb').addEventListener('click', () => addEditorRow('or'));
+
+    const groups = pane.querySelector('.fx-e-groups');
+    groups.addEventListener('input', (e) => {
+      const el = e.target;
+      if (!el.dataset || el.dataset.f === undefined) return;
+      const row = editGroups[+el.dataset.gi] && editGroups[+el.dataset.gi][+el.dataset.ri];
+      if (!row) return;
+      if (el.dataset.f === 'field') row.field = el.value.trim().toLowerCase();
+      else if (el.dataset.f === 'value') row.value = el.value;
+      else if (el.dataset.f === 'raw') row.raw = el.value;
+      updateEditorState(pane);
+    });
+    groups.addEventListener('change', (e) => {
+      if (e.target.dataset && e.target.dataset.f === 'op') {
+        const row = editGroups[+e.target.dataset.gi] && editGroups[+e.target.dataset.gi][+e.target.dataset.ri];
+        if (row) { row.op = e.target.value; updateEditorState(pane); }
+      }
+    });
+    groups.addEventListener('focusin', (e) => {
+      if (e.target.dataset && e.target.dataset.gi !== undefined) editFocus = { gi: +e.target.dataset.gi, ri: +e.target.dataset.ri };
+    });
+    groups.addEventListener('click', (e) => {
+      const rd = e.target.closest && e.target.closest('.fx-e-rdel');
+      if (rd) {
+        const gi = +rd.dataset.gi;
+        editGroups[gi].splice(+rd.dataset.ri, 1);
+        if (!editGroups[gi].length) editGroups.splice(gi, 1);
+        editFocus = null;
+        renderEditorRows(pane); updateEditorState(pane);
+        return;
+      }
+      const gd = e.target.closest && e.target.closest('.fx-e-gdel');
+      if (gd) {
+        editGroups.splice(+gd.closest('.fx-e-group').dataset.gi, 1);
+        editFocus = null;
+        renderEditorRows(pane); updateEditorState(pane);
+        return;
+      }
+      const gw = e.target.closest && e.target.closest('.fx-e-grow');
+      if (gw) {
+        const gi = +gw.closest('.fx-e-group').dataset.gi;
+        const src = editGroups[gi].slice(-1)[0];
+        const row = src && src.raw == null && src.field
+          ? { field: src.field, op: src.op === '!=' ? '=' : src.op, value: '' }
+          : { field: '', op: '=', value: '' };
+        editGroups[gi].push(row);
+        renderEditorRows(pane); updateEditorState(pane);
+        focusEditorRow(pane, gi, editGroups[gi].length - 1, row.field ? 'value' : 'field');
+      }
+    });
+
+    pane.querySelector('.fx-e-search').addEventListener('click', () => {
+      const q = groupsToQuery(editGroups);
+      if (q) openTab(q);
+    });
+    pane.querySelector('.fx-e-copy').addEventListener('click', (ev) => {
+      const q = groupsToQuery(editGroups);
+      if (q) copyText(q, ev.currentTarget);
+    });
+    // 编辑器内回车直接搜索
+    pane.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.isComposing) {
+        const q = groupsToQuery(editGroups);
+        if (q) { e.preventDefault(); openTab(q); }
+      }
+    });
+    updateEditorState(pane);
+  }
 
   /* ---------------- Alt + 左键拖拽：框选批量 ----------------
      框住一块区域后，识别其中所有可排除对象（侧栏排名条目/结果行 favicon/
@@ -1410,12 +1782,27 @@
     if (menu && !menu.contains(e.target)) hideMenu();
     const p = document.getElementById('fofa-toolbox-stage-panel');
     if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-stage-bar'))) hideStagePanel();
-    const lib = document.getElementById('fofa-toolbox-lib');
-    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-lib-btn,#fofa-imp-toast'))) closeLib(true);
+    const lib = document.getElementById('fofa-toolbox-box');
+    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-btn,#fofa-imp-toast'))) closeToolbox(true);
   }, true);
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { hideMenu(); hideStagePanel(); rubberStop(true); closeLib(true); }
+    if (e.key === 'Escape') { hideMenu(); hideStagePanel(); rubberStop(true); closeToolbox(true); }
+  }, true);
+
+  // Alt+Q 开关工具箱；Alt+A / Alt+O 编辑器快捷键（编辑器标签页激活时）
+  document.addEventListener('keydown', (e) => {
+    if (!e.altKey || e.ctrlKey || e.shiftKey || e.isComposing) return;
+    if (e.code === 'KeyQ') {
+      e.preventDefault();
+      if (document.getElementById('fofa-toolbox-box')) closeToolbox(true); else openToolbox();
+      return;
+    }
+    const pane = document.querySelector('#fofa-toolbox-box .fx-t-pane-edit');
+    if (pane && pane.classList.contains('on')) {
+      if (e.code === 'KeyA') { e.preventDefault(); addEditorRow('and'); }
+      else if (e.code === 'KeyO') { e.preventDefault(); addEditorRow('or'); }
+    }
   }, true);
 
   window.addEventListener('scroll', hideMenu, true);
