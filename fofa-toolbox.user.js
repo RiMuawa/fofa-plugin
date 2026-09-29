@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.9.0
+// @version      3.10.0
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.9.0';
+  const VER = '3.10.0';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -454,8 +454,8 @@
 #fofa-toolbox-menu .fx-btns button:hover{background:#eef1f4}
 #fofa-toolbox-menu .fx-primary{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
 #fofa-toolbox-menu .fx-primary:hover{background:#ffab2e;border-color:#ffab2e}
+#fofa-toolbox-menu .fx-inc{flex:1}
 #fofa-toolbox-menu .fx-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;color:#8b949e;font-size:10px;margin-top:6px}
-#fofa-toolbox-menu .fx-copy,#fofa-toolbox-menu .fx-stage{padding:5px 8px}
 #fofa-toolbox-menu .fx-curwin{display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none}
 #fofa-toolbox-menu .fx-curwin input{margin:0;accent-color:#f1961f}
 #fofa-toolbox-stage-bar{position:fixed;right:12px;bottom:12px;z-index:2147483646;background:#f1961f;color:#fff;border-radius:16px;
@@ -486,7 +486,7 @@
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.2)}
 #fofa-toolbox-btn:hover{color:#f1961f;border-color:#f1961f}
 #fofa-toolbox-box{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483647;width:1080px;
-  max-width:94vw;max-height:84vh;display:flex;flex-direction:column;background:#fff;color:#24292f;border:1px solid #d0d7de;
+  height:520px;max-width:94vw;max-height:84vh;display:flex;flex-direction:column;background:#fff;color:#24292f;border:1px solid #d0d7de;
   border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.22);overflow:hidden;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
 #fofa-toolbox-box.fx-l-lower{top:62%}
@@ -572,7 +572,10 @@
 #fofa-toolbox-box .fx-e-actions{display:flex;gap:6px;padding:8px 12px}
 #fofa-toolbox-box .fx-e-actions .fx-e-search{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
 #fofa-toolbox-box .fx-e-actions .fx-e-search:hover{background:#ffab2e;border-color:#ffab2e}
-#fofa-toolbox-box .fx-e-hint{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}`;
+#fofa-toolbox-box .fx-e-hint{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}
+#fofa-toolbox-box .fx-t-resize{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;z-index:5;
+  background:linear-gradient(135deg,transparent 0 46%,#c4cdd5 46% 54%,transparent 54% 66%,#c4cdd5 66% 74%,transparent 74% 86%,#c4cdd5 86% 94%,transparent 94%)}
+#fofa-toolbox-box .fx-t-resize:hover{background:linear-gradient(135deg,transparent 0 46%,#f1961f 46% 54%,transparent 54% 66%,#f1961f 66% 74%,transparent 74% 86%,#f1961f 86% 94%,transparent 94%)}`;
       (document.head || document.documentElement).appendChild(toolboxStyle);
     }
   }
@@ -600,9 +603,6 @@
       <div class="fx-btns">
         <button class="fx-primary" title="将该条件取反后追加到当前语句，并在新标签页打开">🚫 排除并打开</button>
         <button class="fx-inc" title="将该条件追加到当前语句，并在新标签页打开">➕ 包含</button>
-        <button class="fx-stage" title="暂存此条件，稍后在右下角批量排除/包含">📥 暂存</button>
-        <button class="fx-lib" title="收藏当前搜索语句到指纹库（自动记录 IP 条数，可补充厂商/型号/地区）">⭐</button>
-        <button class="fx-copy" title="复制排除后的完整语句">📋</button>
       </div>
       <div class="fx-foot">
         <label class="fx-curwin" title="勾选后在当前标签页内跳转，不再新开标签"><input type="checkbox">在本页打开</label>
@@ -643,11 +643,6 @@
 
     menu.querySelector('.fx-primary').addEventListener('click', () => doOpen('exclude'));
     menu.querySelector('.fx-inc').addEventListener('click', () => doOpen('include'));
-    menu.querySelector('.fx-copy').addEventListener('click', (ev) => {
-      const cond = getCond();
-      if (!cond) { input.focus(); return; }
-      copyText(compose(ensureNeg(cond)), ev.currentTarget);
-    });
     input.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') { ev.preventDefault(); doOpen('exclude'); }
     });
@@ -659,28 +654,6 @@
     menu.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + 'px';
     input.focus();
     if (cand.cond) input.select();
-
-    // 暂存：存为包含形式（=），批量应用时再决定取反与否
-    menu.querySelector('.fx-stage').addEventListener('click', (ev) => {
-      const cond = ensurePos(getCond());
-      if (!cond) { input.focus(); return; }
-      const arr = loadStaged();
-      if (!arr.includes(cond)) arr.push(cond);
-      saveStaged(arr);
-      ensureStagedBar();
-      const btn = ev.currentTarget;
-      btn.textContent = '✓ 已暂存';
-      setTimeout(hideMenu, 450);
-    });
-
-    // 收藏当前搜索语句到指纹库（自动记录 IP 条数）
-    menu.querySelector('.fx-lib').addEventListener('click', (ev) => {
-      const ok = addFingerprint();
-      const btn = ev.currentTarget;
-      btn.textContent = ok ? '✓' : '⚠';
-      setTimeout(() => { btn.textContent = '⭐'; }, 900);
-      if (ok) setTimeout(hideMenu, 450);
-    });
   }
 
   /* ---------------- 批量暂存：右下角徽标 + 面板 ---------------- */
@@ -868,15 +841,6 @@
     return entry;
   }
 
-  function addFingerprint() {
-    const entry = captureFingerprint();
-    if (!entry) return false;
-    const arr = loadLib();
-    arr.unshift(entry);
-    saveLib(arr);
-    return true;
-  }
-
   const csvCell = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
   function libToCsv(arr) {
     const head = LIB_FIELDS.map((f) => f.label).concat(['收藏时间']);
@@ -899,6 +863,8 @@
   let boxUserClosed = false; // 用户手动关过后，本页面会话不再自动弹出
   const LIB_POS_KEY = 'fofa-lib-pos';
   let libDrag = null; // {panel, dx, dy} 拖动状态（move/up 监听在 document 上，只注册一次）
+  const BOX_SIZE_KEY = 'fofa-box-size';
+  let boxResize = null; // {panel, x, y, w, h} 宽高调整状态
 
   function closeToolbox(byUser) {
     if (byUser) boxUserClosed = true;
@@ -921,10 +887,17 @@
   }
 
   function resetLibPos(panel) {
-    try { localStorage.removeItem(LIB_POS_KEY); } catch (e) { /* ignore */ }
+    try {
+      localStorage.removeItem(LIB_POS_KEY);
+      localStorage.removeItem(BOX_SIZE_KEY);
+    } catch (e) { /* ignore */ }
     panel.style.left = '';
     panel.style.top = '';
     panel.style.transform = '';
+    panel.style.width = '';
+    panel.style.height = '';
+    panel.style.maxWidth = '';
+    panel.style.maxHeight = '';
   }
 
   function attachToolboxDrag(panel) {
@@ -948,7 +921,45 @@
     });
   }
 
+  // 手工调整宽高：右下角把手拖动，尺寸记住；调整前先钉住左上角，避免居中 transform 跳动
+  function applySavedBoxSize(panel) {
+    try {
+      const sz = JSON.parse(localStorage.getItem(BOX_SIZE_KEY) || 'null');
+      if (sz && sz.w >= 420 && sz.h >= 260) {
+        panel.style.width = Math.min(sz.w, innerWidth - 16) + 'px';
+        panel.style.height = Math.min(sz.h, innerHeight - 16) + 'px';
+        panel.style.maxWidth = 'none';
+        panel.style.maxHeight = 'none';
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function attachBoxResize(panel) {
+    const grip = panel.querySelector('.fx-t-resize');
+    if (!grip) return;
+    grip.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const r = panel.getBoundingClientRect();
+      panel.style.left = r.left + 'px';
+      panel.style.top = r.top + 'px';
+      panel.style.transform = 'none';
+      boxResize = { panel, x: e.clientX, y: e.clientY, w: r.width, h: r.height };
+    });
+  }
+
   document.addEventListener('mousemove', (e) => {
+    if (boxResize) {
+      const p = boxResize.panel;
+      const w = Math.max(420, Math.min(boxResize.w + e.clientX - boxResize.x, innerWidth - 8));
+      const h = Math.max(260, Math.min(boxResize.h + e.clientY - boxResize.y, innerHeight - 8));
+      p.style.width = w + 'px';
+      p.style.height = h + 'px';
+      p.style.maxWidth = 'none'; // 手工尺寸自行按视口钳制，解除 CSS 上限
+      p.style.maxHeight = 'none';
+      return;
+    }
     if (!libDrag) return;
     const p = libDrag.panel;
     const l = Math.max(60 - p.offsetWidth, Math.min(e.clientX - libDrag.dx, innerWidth - 60));
@@ -958,6 +969,13 @@
   }, true);
 
   document.addEventListener('mouseup', () => {
+    if (boxResize) {
+      const p = boxResize.panel;
+      boxResize = null;
+      try {
+        localStorage.setItem(BOX_SIZE_KEY, JSON.stringify({ w: p.offsetWidth, h: p.offsetHeight }));
+      } catch (e) { /* ignore */ }
+    }
     if (!libDrag) return;
     const p = libDrag.panel;
     libDrag = null;
@@ -986,7 +1004,8 @@
       <div class="fx-t-body">
         <div class="fx-t-pane fx-t-pane-lib"></div>
         <div class="fx-t-pane fx-t-pane-edit"></div>
-      </div>`;
+      </div>
+      <div class="fx-t-resize" title="拖动调整宽高（双击标题栏恢复默认尺寸与居中）"></div>`;
     renderLib(panel.querySelector('.fx-t-pane-lib'));
     attachLibEvents(panel.querySelector('.fx-t-pane-lib')); // 只挂一次
     buildEditor(panel.querySelector('.fx-t-pane-edit'));
@@ -995,6 +1014,8 @@
       b.addEventListener('click', () => switchTab(b.classList.contains('fx-t-tab-edit') ? 'edit' : 'lib')));
     attachToolboxDrag(panel);
     applySavedLibPos(panel);
+    applySavedBoxSize(panel);
+    attachBoxResize(panel);
     document.documentElement.appendChild(panel);
     switchTab(tab || toolboxTab);
   }
@@ -1073,7 +1094,7 @@
       </div>
       <div class="fx-l-tablewrap"><table class="fx-l-table">
         <thead><tr>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="${LIB_FIELDS.length + 1}" class="fx-l-empty">暂无收藏条目：在结果页右键菜单点 ⭐ 收藏当前语句，或点「新建」手动添加</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="${LIB_FIELDS.length + 1}" class="fx-l-empty">暂无收藏条目：点「＋ 新建」即可收藏当前语句（结果页自动填写），或手动添加</td></tr>`}</tbody>
       </table></div>
       <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 📌 置顶 · 🔍 搜索（after 内 YESTERDAY=昨天 / LastMonth=一月前） · 📅 after 改为一月前搜索 · 数据保存在浏览器本地（localStorage）</div>`;
   }
