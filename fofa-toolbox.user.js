@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.12.0
+// @version      3.12.2
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.12.0';
+  const VER = '3.12.2';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -874,7 +874,8 @@
       region: pickTopSameDigits(grabRankingEntries('国家')).join('、'),
       server: (grabRankingEntries('Server')[0] || {}).name || '',
       title: (grabRankingEntries('网站标题')[0] || {}).name || '',
-      after: afterFromQuery(q),
+      // 收录时间直接记录收藏当天的系统日期
+      after: fmtDate(new Date()),
       vendor: '', model: '', note: '',
       ts: new Date().toLocaleString()
     };
