@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.12.1
+// @version      3.12.0
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.12.1';
+  const VER = '3.12.0';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -505,6 +505,7 @@
 #fofa-toolbox-box .fx-l-mono{font-family:Consolas,Menlo,monospace;font-size:11px}
 #fofa-toolbox-box .fx-l-ops b{cursor:pointer;color:#8b949e;font-weight:400;margin-right:6px}
 #fofa-toolbox-box .fx-l-ops b.fx-l-search:hover{color:#f1961f}
+#fofa-toolbox-box .fx-l-ops b.fx-l-cal:hover{color:#f1961f}
 #fofa-toolbox-box .fx-l-ops b.fx-l-del:hover{color:#e5484d}
 #fofa-toolbox-box .fx-l-ops b.fx-l-pinbtn:hover{color:#b25e09}
 #fofa-toolbox-box .fx-l-ops b.fx-l-pinbtn.on{color:#b25e09}
@@ -842,11 +843,6 @@
     return m ? m[1] : '';
   }
 
-  // after 值归一：绝对日期换成内置占位 LastMonth——搜索时按系统当日解析为“今天起一个月”，不会过期
-  function normAfterVal(val) {
-    return val && !/yesterday|lastmonth/i.test(val) ? 'LastMonth' : val;
-  }
-
   // 名称填写规则：产品唯一（语句里只有一个 app=/product=），或产品排名里
   // 第一名的计数位数严格多于其他（独一档）时填入，其余留空
   function pickName(productFromQ, entries) {
@@ -878,7 +874,7 @@
       region: pickTopSameDigits(grabRankingEntries('国家')).join('、'),
       server: (grabRankingEntries('Server')[0] || {}).name || '',
       title: (grabRankingEntries('网站标题')[0] || {}).name || '',
-      after: normAfterVal(afterFromQuery(q)),
+      after: afterFromQuery(q),
       vendor: '', model: '', note: '',
       ts: new Date().toLocaleString()
     };
@@ -1107,20 +1103,12 @@
 
   const AFTER_VAL_RE = /(after\s*={1,2}(?!=)\s*")([^"]*)(")/g;
 
-  // monthMode: true 把 after 的日期值整体替换为一月前；'fresh' 把绝对日期重定为一月前
-  // （占位符 YESTERDAY/LastMonth 照常解析）；否则仅在 after 值内替换占位符
+  // monthMode: 把 after 的日期值整体替换为一月前；
+  // 否则仅在 after 值内替换 YESTERDAY / LastMonth 占位符
   function resolveQuery(q, monthMode, now) {
     now = now || new Date();
     let out = String(q || '');
-    out = out.replace(AFTER_VAL_RE, (m, a, val, b) => {
-      if (monthMode === 'fresh') {
-        // 占位符（YESTERDAY/LastMonth）照常按语义解析；绝对日期是收藏当时的“一月内”，
-        // 随时间推移越查越宽，统一重定为今天起一个月
-        const isBuiltin = /yesterday|lastmonth/i.test(val);
-        return a + (isBuiltin ? substituteBuiltinSyntax(val, now) : monthAgoOf(now)) + b;
-      }
-      return a + (monthMode ? monthAgoOf(now) : substituteBuiltinSyntax(val, now)) + b;
-    });
+    out = out.replace(AFTER_VAL_RE, (m, a, val, b) => a + (monthMode ? monthAgoOf(now) : substituteBuiltinSyntax(val, now)) + b);
     return out;
   }
 
@@ -1137,7 +1125,7 @@
     const sorted = arr.slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
     const rows = sorted.map((it) => `<tr data-id="${it.id}"${it.pin ? ' class="fx-l-userpin"' : ''}>${LIB_FIELDS.map((f) =>
       `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
-    ).join('')}<td class="fx-l-ops"><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-search" title="用此语句搜索：after 一律按「今天起一个月」解析（YESTERDAY/LastMonth 照常，收藏时的旧日期自动重定）">🔍</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
+    ).join('')}<td class="fx-l-ops"><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
     // 只负责渲染内容；事件在 openToolbox 里对 pane 挂一次（委托，重渲染不影响）
     pane.innerHTML = `
       <div class="fx-l-tools">
@@ -1151,7 +1139,7 @@
         <thead><tr>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
         <tbody>${rows || `<tr><td colspan="${LIB_FIELDS.length + 1}" class="fx-l-empty">暂无收藏条目：点「＋ 新建」即可收藏当前语句（结果页自动填写），或手动添加</td></tr>`}</tbody>
       </table></div>
-      <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 📌 置顶 · 🔍 搜索（after 一律按「今天起一个月」解析，绝不过期） · 数据保存在浏览器本地（localStorage）</div>`;
+      <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 📌 置顶 · 🔍 搜索（after 内 YESTERDAY=昨天 / LastMonth=一月前） · 📅 after 改为一月前搜索 · 数据保存在浏览器本地（localStorage）</div>`;
   }
 
   // 事件只在 openToolbox 时对 pane 挂一次。绝不能放进 renderLib：
@@ -1187,10 +1175,17 @@
         renderLib(pane);
         return;
       }
+      // 📅：after 替换为一月前再搜索
+      const cal = e.target.closest && e.target.closest('.fx-l-cal');
+      if (cal) {
+        const q = (loadLib().find((x) => String(x.id) === cal.closest('tr').dataset.id) || {}).query || '';
+        if (q) openTab(resolveQuery(q, true));
+        return;
+      }
       const search = e.target.closest && e.target.closest('.fx-l-search');
       if (search) {
         const q = (loadLib().find((x) => String(x.id) === search.closest('tr').dataset.id) || {}).query || '';
-        if (q) openTab(resolveQuery(q, 'fresh'));
+        if (q) openTab(resolveQuery(q, false));
         return;
       }
       if (e.target.closest('.fx-l-add')) {

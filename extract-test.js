@@ -134,15 +134,6 @@ eq('检测-内置语法', hasBuiltinSyntax('after="LastMonth" && app="X"'), true
 eq('检测-普通语句', hasBuiltinSyntax('after="2026-09-28" && app="X"'), false);
 eq('检测-文本不含', hasBuiltinSyntax('title="yesterday"'), false);
 
-// ===== 指纹库收录时间：归一 + 搜索时按今天重定 =====
-eq('搜索重定-旧日期换新鲜一月', resolveQuery('after="2026-01-01" && app="X"', 'fresh', sep29), 'after="2026-08-29" && app="X"');
-eq('搜索重定-LastMonth照常', resolveQuery('after="LastMonth"', 'fresh', sep29), 'after="2026-08-29"');
-eq('搜索重定-YESTERDAY语义保留', resolveQuery('after="YESTERDAY" && protocol="telnet"', 'fresh', sep29), 'after="2026-09-28" && protocol="telnet"');
-const normAfterVal = eval('(0,' + grabFn('normAfterVal').replace('function normAfterVal', 'function') + ')');
-eq('收录时间归一-绝对日期', normAfterVal('2026-08-29'), 'LastMonth');
-eq('收录时间归一-占位保留', normAfterVal('YESTERDAY'), 'YESTERDAY');
-eq('收录时间归一-空值', normAfterVal(''), '');
-
 // ===== 导入：CSV/JSON 解析 + 去重合并 =====
 const LIB_FIELDS_SRC = /const LIB_FIELDS = (\[[\s\S]*?\]);/.exec(src)[1];
 const parseImportJson = eval('(0,' + grabFn('parseImportJson').replace('function parseImportJson', 'function') + ')');
