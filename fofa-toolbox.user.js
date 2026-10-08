@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.12.3
+// @version      3.12.4
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.12.3';
+  const VER = '3.12.4';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -444,7 +444,6 @@
 #fofa-toolbox-menu{position:fixed;z-index:2147483647;width:340px;box-sizing:border-box;background:#fff;color:#24292f;
   border:1px solid #d0d7de;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);padding:8px;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
-#fofa-toolbox-menu .fx-cur{color:#57606a;font-size:11px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:text}
 #fofa-toolbox-menu .fx-cond{width:100%;box-sizing:border-box;background:#fff;border:1px solid #d0d7de;border-radius:6px;
   color:#24292f;padding:5px 8px;font:12px/1.4 Consolas,Menlo,monospace;outline:none}
 #fofa-toolbox-menu .fx-cond:focus{border-color:#f1961f}
@@ -638,7 +637,6 @@
     menu = document.createElement('div');
     menu.id = 'fofa-toolbox-menu';
     menu.innerHTML = `
-      <div class="fx-cur" title="${esc(cand.cur || '当前页面无搜索语句')}">${esc(cand.cur || '无当前语句')}</div>
       <input class="fx-cond" spellcheck="false" placeholder='例如 product="HIKVISION-视频监控" 或 icon_hash="-1940193079"'>
       <div class="fx-btns">
         <button class="fx-primary" title="将该条件取反后追加到当前语句，并在新标签页打开">🚫 排除并打开</button>
