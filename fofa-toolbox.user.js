@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.12.2
+// @version      3.12.3
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.12.2';
+  const VER = '3.12.3';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -545,7 +545,7 @@
   background:#f6f8fa;border-radius:6px;padding:4px 10px;cursor:pointer;font:12px/1.4 inherit;color:#24292f;white-space:nowrap}
 #fofa-toolbox-box .fx-e-quick button:hover,#fofa-toolbox-box .fx-e-adds button:hover,#fofa-toolbox-box .fx-e-actions button:hover{background:#eef1f4}
 #fofa-toolbox-box .fx-e-quick button.on{background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
-#fofa-toolbox-box .fx-e-groups{flex:1;min-height:0;overflow:auto;padding:8px 12px;display:flex;flex-direction:column;gap:6px}
+#fofa-toolbox-box .fx-e-cards{flex:1;min-height:0;overflow:auto;padding:8px 12px;display:flex;flex-direction:column;gap:6px}
 #fofa-toolbox-box .fx-e-empty{color:#8b949e;text-align:center;padding:24px}
 #fofa-toolbox-box .fx-e-group{border:1px solid #eef1f4;border-radius:8px;padding:5px 8px}
 #fofa-toolbox-box .fx-e-group.or{border-color:rgba(241,150,31,.55)}
