@@ -182,37 +182,52 @@ eq('导入合并-保留置顶', r2.list[1].pin, true);
 eq('导入合并-id冲突重分配', r2.list[1].id !== 9, true);
 eq('导入合并-整行空白不计跳过', mergeImport([{ query: '', note: '' }], []).skipped, 0);
 
-// ===== 查询编辑器：语句 <-> 结构化条件组 =====
+// ===== 查询编辑器：语句 <-> 字段卡 =====
 const splitOrTop = eval('(0,' + grabFn('splitOrTop').replace('function splitOrTop', 'function') + ')');
 const stripWrapParens = eval('(0,' + grabFn('stripWrapParens').replace('function stripWrapParens', 'function') + ')');
 const parseCondOne = eval('(0,' + grabFn('parseCondOne').replace('function parseCondOne', 'function') + ')');
-const parseQueryToGroups = eval('(function(){' + grabFn('splitTop') + '\n' + grabFn('splitOrTop') + '\n' + grabFn('stripWrapParens') + '\n' + grabFn('parseCondOne') + '\n' + grabFn('parseQueryToGroups') + '\nreturn parseQueryToGroups;})()');
-const groupsToQuery = eval('(function(){' + grabFn('rowToQuery') + '\n' + grabFn('groupsToQuery') + '\nreturn groupsToQuery;})()');
+const parseQueryToCards = eval('(function(){' + grabFn('splitTop') + '\n' + grabFn('splitOrTop') + '\n' + grabFn('stripWrapParens') + '\n' + grabFn('parseCondOne') + '\n' + grabFn('parseQueryToCards') + '\nreturn parseQueryToCards;})()');
+const cardsToQuery = eval('(function(){' + grabFn('cardRowQ') + '\n' + grabFn('cardsToQuery') + '\nreturn cardsToQuery;})()');
+const mergeCards = eval('(0,' + grabFn('mergeCards').replace('function mergeCards', 'function') + ')');
 
 eq('或切分', splitOrTop('country="PK" || country="IN" || country="IR"').length, 3);
 eq('或切分-括号内不切', splitOrTop('(a="1" || b="2") && c="3"').length, 1);
 eq('剥外层括号', stripWrapParens('(country="PK" || country="IN")'), 'country="PK" || country="IN"');
+eq('剥外层括号-迭代多层', stripWrapParens('((country="PK"))'), 'country="PK"');
 eq('不剥中途闭合', stripWrapParens('(a="1") || b="2"'), '(a="1") || b="2"');
 eq('不剥引号内括号', stripWrapParens('(title="a(b)" || c="1")'), 'title="a(b)" || c="1"');
-eq('嵌套括号剥一层', stripWrapParens('((a="1" || b="2"))'), '(a="1" || b="2")');
 eq('条件-双等号', JSON.stringify(parseCondOne('icon_hash=="-1940193079"')), JSON.stringify({ field: 'icon_hash', op: '==', value: '-1940193079' }));
 eq('条件-排除', JSON.stringify(parseCondOne('server!="nginx"')), JSON.stringify({ field: 'server', op: '!=', value: 'nginx' }));
 eq('条件-不带引号值', JSON.stringify(parseCondOne('port=80')), JSON.stringify({ field: 'port', op: '=', value: '80' }));
 eq('条件-裸关键词', JSON.stringify(parseCondOne('"busybox"')), JSON.stringify({ field: '', op: '', value: 'busybox' }));
 eq('条件-识别失败', parseCondOne('(a && b)'), null);
 
-// 用户示例规则：拆组 + 往返一致
-const userRule = 'after="2026-08-29" && (country="PK" || country="IN" || country="IR") && title="route" && is_cloude="false"';
-const userGroups = parseQueryToGroups(userRule);
-eq('编辑器-用户规则组数', userGroups.length, 4);
-eq('编辑器-或组行数', userGroups[1].length, 3);
-eq('编辑器-或组字段', userGroups[1].every((r) => r.field === 'country'), true);
-eq('编辑器-首组解析', JSON.stringify(userGroups[0][0]), JSON.stringify({ field: 'after', op: '=', value: '2026-08-29' }));
-eq('编辑器-用户规则往返', groupsToQuery(userGroups), userRule);
-eq('编辑器-关键词往返', groupsToQuery(parseQueryToGroups('"busybox" && protocol="telnet"')), '"busybox" && protocol="telnet"');
-eq('编辑器-复杂或组保留原样', groupsToQuery(parseQueryToGroups('(app="A" && port="1") || title="x"')), '((app="A" && port="1") || title="x")');
-eq('编辑器-空语句', groupsToQuery(parseQueryToGroups('')), '');
-eq('编辑器-单条件加括号往返', groupsToQuery(parseQueryToGroups('(title="x")')), 'title="x"');
+// 用户示例规则：双层括号或组 + 排除链 + 常规条件
+const oemTail = 'is_cloud="false" && category="视频监控" && product!="HIKVISION-视频监控" && product!="LOREX-视频监控" && after="2026-09-08"';
+const userQ = '((country="PK" || country="IN" || country="IR" || country="KZ")) && ' + oemTail;
+const cards = parseQueryToCards(userQ);
+eq('字段卡-卡数', cards.length, 5);
+eq('字段卡-country是或卡', cards[0].join, '||');
+eq('字段卡-country行数', cards[0].rows.length, 4);
+eq('字段卡-product排除并成一卡', (cards.filter((c) => c.field === 'product')[0] || {}).rows.length, 2);
+eq('字段卡-product是且卡', (cards.filter((c) => c.field === 'product')[0] || {}).join, '&&');
+eq('字段卡-用户规则往返（双层括号规范化为单层）', cardsToQuery(cards),
+  '(country="PK" || country="IN" || country="IR" || country="KZ") && ' + oemTail);
+eq('字段卡-同字段且卡或卡并存', cardsToQuery(parseQueryToCards('(country="PK" || country="IN") && country!="CN"')),
+  '(country="PK" || country="IN") && country!="CN"');
+eq('字段卡-关键词往返', cardsToQuery(parseQueryToCards('"busybox" && protocol="telnet"')), '"busybox" && protocol="telnet"');
+eq('字段卡-跨字段或组原样保留', cardsToQuery(parseQueryToCards('(app="A" && port="1") || title="x"')), '(app="A" && port="1") || title="x"');
+eq('字段卡-空语句', cardsToQuery(parseQueryToCards('')), '');
+
+// 预设并入：同字段同拼接方式的卡合并去重，异拼接另起新卡
+eq('预设并入-合并去重', JSON.stringify(mergeCards(
+  [{ field: 'country', join: '||', rows: [{ op: '=', value: 'PK' }, { op: '=', value: 'IN' }] }],
+  parseQueryToCards('country="IN" || country="UZ"'))),
+  JSON.stringify([{ field: 'country', join: '||', rows: [{ op: '=', value: 'PK' }, { op: '=', value: 'IN' }, { op: '=', value: 'UZ' }] }]));
+eq('预设并入-拼接不同另起卡', JSON.stringify(mergeCards(
+  [{ field: 'country', join: '||', rows: [{ op: '=', value: 'PK' }] }],
+  parseQueryToCards('country="CN"')).map((c) => c.field + ':' + c.join)),
+  JSON.stringify(['country:||', 'country:&&']));
 
 // ===== 知识库：记录归一化 =====
 const kbNormEntry = eval('(0,' + grabFn('kbNormEntry').replace('function kbNormEntry', 'function') + ')');

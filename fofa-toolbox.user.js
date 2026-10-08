@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.11.0
+// @version      3.12.0
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.11.0';
+  const VER = '3.12.0';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -549,12 +549,16 @@
 #fofa-toolbox-box .fx-e-empty{color:#8b949e;text-align:center;padding:24px}
 #fofa-toolbox-box .fx-e-group{border:1px solid #eef1f4;border-radius:8px;padding:5px 8px}
 #fofa-toolbox-box .fx-e-group.or{border-color:rgba(241,150,31,.55)}
-#fofa-toolbox-box .fx-e-ghead{display:flex;align-items:center;gap:6px;color:#8b949e;font-size:10px;margin-bottom:2px}
-#fofa-toolbox-box .fx-e-and{color:#b25e09;font-weight:600;font-size:11px}
-#fofa-toolbox-box .fx-e-gops{margin-left:auto;display:flex;gap:6px}
-#fofa-toolbox-box .fx-e-gops b{cursor:pointer;color:#8b949e;font-weight:400}
-#fofa-toolbox-box .fx-e-gops b.fx-e-grow:hover{color:#f1961f}
-#fofa-toolbox-box .fx-e-gops b.fx-e-gdel:hover{color:#e5484d}
+#fofa-toolbox-box .fx-e-chead{display:flex;align-items:center;gap:4px;margin-bottom:2px}
+#fofa-toolbox-box .fx-e-cfld{width:175px;border:1px solid #d0d7de;border-radius:6px;padding:3px 6px;
+  font:12px/1.4 Consolas,Menlo,monospace;background:#fff;color:#24292f}
+#fofa-toolbox-box .fx-e-cjoin{border:1px solid #d0d7de;border-radius:6px;padding:2px;font:12px/1.4 inherit;
+  background:#fff;color:#24292f}
+#fofa-toolbox-box .fx-e-cops{margin-left:auto;display:flex;gap:6px}
+#fofa-toolbox-box .fx-e-cops b{cursor:pointer;color:#8b949e;font-weight:400}
+#fofa-toolbox-box .fx-e-cops b.fx-e-cadd:hover{color:#f1961f}
+#fofa-toolbox-box .fx-e-cops b.fx-e-cdel:hover{color:#e5484d}
+#fofa-toolbox-box .fx-e-rowand{color:#8b949e;font-size:11px;padding:0 2px}
 #fofa-toolbox-box .fx-e-row{display:flex;align-items:center;gap:4px;margin:2px 0}
 #fofa-toolbox-box .fx-e-row input,#fofa-toolbox-box .fx-e-row select{border:1px solid #d0d7de;border-radius:6px;
   padding:3px 6px;font:12px/1.4 Consolas,Menlo,monospace;color:#24292f;background:#fff;box-sizing:content-box}
@@ -573,6 +577,25 @@
 #fofa-toolbox-box .fx-e-actions .fx-e-search{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
 #fofa-toolbox-box .fx-e-actions .fx-e-search:hover{background:#ffab2e;border-color:#ffab2e}
 #fofa-toolbox-box .fx-e-hint{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}
+#fofa-toolbox-box .fx-e-pbox{margin:6px 12px 0;border:1px solid #eef1f4;border-radius:8px;padding:6px 8px}
+#fofa-toolbox-box .fx-e-prow{display:flex;gap:6px;margin-bottom:4px}
+#fofa-toolbox-box .fx-e-pname{flex:1;border:1px solid #d0d7de;border-radius:6px;padding:3px 8px;
+  font:12px/1.4 inherit;background:#fff;color:#24292f;outline:none}
+#fofa-toolbox-box .fx-e-pname:focus{border-color:#f1961f}
+#fofa-toolbox-box .fx-e-psave{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:3px 10px;
+  cursor:pointer;font:12px/1.4 inherit;color:#24292f;white-space:nowrap}
+#fofa-toolbox-box .fx-e-psave:hover{background:#eef1f4}
+#fofa-toolbox-box .fx-e-plist{max-height:150px;overflow:auto}
+#fofa-toolbox-box .fx-e-pitem{display:flex;align-items:center;gap:6px;padding:2px 0}
+#fofa-toolbox-box .fx-e-pitem .fx-e-pn{color:#24292f;font-weight:600;max-width:130px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+#fofa-toolbox-box .fx-e-pitem .fx-e-pc{flex:1;color:#57606a;font-family:Consolas,Menlo,monospace;font-size:11px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+#fofa-toolbox-box .fx-e-pitem .fx-e-pc:hover{color:#f1961f}
+#fofa-toolbox-box .fx-e-pitem b{cursor:pointer;color:#8b949e;font-weight:400;padding:0 4px}
+#fofa-toolbox-box .fx-e-pitem b.fx-e-pins{color:#f1961f}
+#fofa-toolbox-box .fx-e-pitem b.fx-e-pdel:hover{color:#e5484d}
+#fofa-toolbox-box .fx-e-pempty{color:#8b949e;font-size:11px;padding:4px 0}
 #fofa-toolbox-box .fx-t-resize{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;z-index:5;
   background:linear-gradient(135deg,transparent 0 46%,#c4cdd5 46% 54%,transparent 54% 66%,#c4cdd5 66% 74%,transparent 74% 86%,#c4cdd5 86% 94%,transparent 94%)}
 #fofa-toolbox-box .fx-t-resize:hover{background:linear-gradient(135deg,transparent 0 46%,#f1961f 46% 54%,transparent 54% 66%,#f1961f 66% 74%,transparent 74% 86%,#f1961f 86% 94%,transparent 94%)}
@@ -1395,11 +1418,10 @@
   }, 1500);
 
   /* ---------------- 查询编辑器（工具箱第二个标签页） ----------------
-     把当前语句拆成结构化条件：顶层按 && 得到条件组，组内按 || 得到行；
-     行 = 字段/运算符/值，裸关键词（"xxx"）单独一类，识别不了的片段原样保留（raw 行）。
-     快速开关：📅 一个月内（after=一月前，月末钳制）、☁️ 排除云服务（is_cloud="false"，
-     兼容识别旧语句里的 is_cloude 写法）。快捷键：Alt+A 新增且条件组、Alt+O 在焦点行后
-     追加或条件（继承字段），编辑器内回车直接搜索。 */
+     按「字段卡」编辑：同一字段的值集中在一张卡里（country 多国并列、product 一串排除…），
+     卡内拼接可选 且(&&) / 或(||)——或卡多值合成时自动加括号；识别不了的片段以「原样」卡保留。
+     预设：把某张卡（或整条语句）存为命名预设，需要时一键并入（同字段同拼接的卡自动合并去重）。
+     快捷键：Alt+A 新增字段卡；Alt+O 在焦点卡追加值（继承上一行运算符）；回车搜索。 */
 
   const EDITOR_FIELDS = ['title','host','ip','port','country','region','city','asn','org','domain',
     'protocol','server','product','app','category','icon_hash','header','body','cert','cert.subject.org',
@@ -1422,22 +1444,25 @@
     return parts.filter(Boolean);
   }
 
-  // 剥掉真正包裹整个表达式的最外层括号（引号里的括号不误判，中途闭合的不剥）
+  // 迭代剥掉所有真正包裹整个表达式的最外层括号（引号里的括号不误判，中途闭合的不剥）
   function stripWrapParens(s) {
     s = String(s).trim();
-    if (!(s.startsWith('(') && s.endsWith(')'))) return s;
-    let depth = 0, inStr = false;
-    for (let i = 0; i < s.length; i++) {
-      const c = s[i];
-      if (inStr) { if (c === '"') inStr = false; continue; }
-      if (c === '"') { inStr = true; continue; }
-      if (c === '(') depth++;
-      else if (c === ')') { depth--; if (depth === 0 && i < s.length - 1) return s; }
+    while (s.startsWith('(') && s.endsWith(')')) {
+      let depth = 0, inStr = false, wraps = true;
+      for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (inStr) { if (c === '"') inStr = false; continue; }
+        if (c === '"') { inStr = true; continue; }
+        if (c === '(') depth++;
+        else if (c === ')') { depth--; if (depth === 0 && i < s.length - 1) { wraps = false; break; } }
+      }
+      if (!wraps || depth !== 0) break;
+      s = s.slice(1, -1).trim();
     }
-    return depth === 0 ? s.slice(1, -1).trim() : s;
+    return s;
   }
 
-  // 单个条件 -> 行对象；裸关键词 -> field 为空；识别不了 -> null（由调用方落为 raw 行）
+  // 单个条件 -> 行对象；裸关键词 -> field 为空；识别不了 -> null（由调用方落为原样卡）
   function parseCondOne(s) {
     s = String(s).trim();
     const kw = /^"([^"]*)"$/.exec(s);
@@ -1449,94 +1474,163 @@
     return { field: m[1], op: m[2], value: v };
   }
 
-  function parseQueryToGroups(q) {
-    const groups = [];
+  // 语句 -> 字段卡数组：顶层按 && 分段后，同字段的零散单行并成一张「且」卡（保持首见位置），
+  // 纯同字段的或组成为一张「或」卡，跨字段或组等其余片段整段原样保留
+  function parseQueryToCards(q) {
+    const cards = [];
+    const byField = new Map();
     for (const part of splitTop(String(q || '').trim())) {
       const alts = splitOrTop(stripWrapParens(part)).filter(Boolean);
       if (!alts.length) continue;
       if (alts.length === 1) {
-        groups.push([parseCondOne(alts[0]) || { raw: part }]);
+        const row = parseCondOne(alts[0]);
+        if (!row) { cards.push({ raw: part }); continue; }
+        const slim = { op: row.op, value: row.value };
+        if (!row.field) { cards.push({ field: '', join: '&&', rows: [slim] }); continue; }
+        const key = row.field.toLowerCase();
+        const c = byField.get(key);
+        if (c) c.rows.push(slim);
+        else {
+          const card = { field: row.field, join: '&&', rows: [slim] };
+          byField.set(key, card);
+          cards.push(card);
+        }
         continue;
       }
-      groups.push(alts.map((a) => parseCondOne(a) || { raw: a }));
+      const rows = alts.map((a) => parseCondOne(a));
+      if (rows.every((r) => r && r.field && r.field.toLowerCase() === rows[0].field.toLowerCase())) {
+        cards.push({ field: rows[0].field, join: '||', rows: rows.map((r) => ({ op: r.op, value: r.value })) });
+      } else {
+        cards.push({ raw: part });
+      }
     }
-    return groups;
+    return cards;
   }
 
-  function rowToQuery(r) {
+  function cardRowQ(card, r) {
     if (r.raw != null) return String(r.raw).trim();
-    if (!r.field) return r.value ? `"${r.value}"` : '';
-    return r.value === '' ? '' : `${r.field}${r.op}"${r.value}"`;
+    if (!card.field) return r.value ? `"${r.value}"` : '';
+    return r.value === '' ? '' : `${card.field}${r.op}"${r.value}"`;
   }
 
-  function groupsToQuery(groups) {
+  // 单卡内容（不加外层括号，存预设用）；或卡多值只在整句合成时才加括号
+  function cardToQuery(card) {
+    if (card.raw != null) return String(card.raw).trim();
+    const rows = (card.rows || []).map((r) => cardRowQ(card, r)).filter(Boolean);
+    return rows.join(card.join === '||' ? ' || ' : ' && ');
+  }
+
+  function cardsToQuery(cards) {
     const parts = [];
-    for (const g of groups) {
-      const alts = g.map(rowToQuery).filter(Boolean);
-      if (!alts.length) continue;
-      parts.push(alts.length === 1 ? alts[0] : '(' + alts.join(' || ') + ')');
+    for (const c of cards) {
+      if (c.raw != null) { const s = String(c.raw).trim(); if (s) parts.push(s); continue; }
+      const rows = (c.rows || []).map((r) => cardRowQ(c, r)).filter(Boolean);
+      if (!rows.length) continue;
+      if (rows.length > 1 && c.join === '||') parts.push('(' + rows.join(' || ') + ')');
+      else parts.push(rows.join(' && '));
     }
     return parts.join(' && ');
   }
 
-  let editGroups = [];     // [[行, ...], ...] 顶层 && 的条件组，组内 || 
-  let editFocus = null;    // {gi, ri} 最近聚焦的行（Alt+O 的插入位置参考）
+  // 预设并入（可单测）：同字段同拼接方式的卡合并行并去重，其余追加为新卡
+  function mergeCards(dest, incoming) {
+    const out = dest.slice();
+    for (const pc of incoming) {
+      if (pc.raw != null) { out.push(pc); continue; }
+      const tgt = out.find((c) => c.raw == null && c.field.toLowerCase() === pc.field.toLowerCase() && c.join === pc.join);
+      if (tgt) {
+        for (const r of pc.rows) if (!tgt.rows.some((x) => x.op === r.op && x.value === r.value)) tgt.rows.push({ op: r.op, value: r.value });
+      } else out.push(pc);
+    }
+    return out;
+  }
+
+  const PRESET_KEY = 'fofa-toolbox-presets';
+  function loadPresets() {
+    try { const a = JSON.parse(localStorage.getItem(PRESET_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function savePresets(arr) {
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(arr)); return true; }
+    catch (e) { return false; }
+  }
+
+  let editCards = [];      // 字段卡数组：{field, join, rows:[{op,value}]} 或 {raw}
+  let editFocus = null;    // {ci, ri} 最近聚焦的卡/行（卡头元素 ri 为 -1）
   let editLastParsed = null; // 上次读取时的页面语句（变了才重读，保留用户编辑）
 
   function parseEditorFromPage() {
     editLastParsed = currentQuery();
-    editGroups = parseQueryToGroups(editLastParsed);
+    editCards = parseQueryToCards(editLastParsed);
     editFocus = null;
     const box = document.getElementById('fofa-toolbox-box');
-    if (box) { renderEditorRows(box); updateEditorState(box); }
+    if (box) { renderEditorCards(box); updateEditorState(box); }
   }
 
-  function renderEditorRows(scope) {
-    const wrap = scope.querySelector('.fx-e-groups');
+  function renderEditorCards(scope) {
+    const wrap = scope.querySelector('.fx-e-cards');
     if (!wrap) return;
-    if (!editGroups.length) {
-      wrap.innerHTML = '<div class="fx-e-empty">（无条件）：点上方快速开关，或 Alt+A / Alt+O 添加</div>';
+    if (!editCards.length) {
+      wrap.innerHTML = '<div class="fx-e-empty">（无条件）：点上方快速开关 / 预设，或 Alt+A 添加字段卡</div>';
       return;
     }
     let html = '';
-    editGroups.forEach((g, gi) => {
-      const or = g.length > 1;
-      html += `<div class="fx-e-group${or ? ' or' : ''}" data-gi="${gi}">
-        <div class="fx-e-ghead">
-          ${gi > 0 ? '<span class="fx-e-and">且 &&</span>' : '<span class="fx-e-tag">条件组</span>'}
-          ${or ? '<span class="fx-e-tag">( 组内任一匹配 )</span>' : ''}
-          <span class="fx-e-gops"><b class="fx-e-grow" title="在本组追加一条或条件">＋或</b><b class="fx-e-gdel" title="删除整组">✕组</b></span>
+    editCards.forEach((c, ci) => {
+      if (c.raw != null) {
+        html += `<div class="fx-e-group" data-ci="${ci}">
+          <div class="fx-e-chead"><span class="fx-e-tag">原样片段</span><span class="fx-e-cops"><b class="fx-e-cdel" title="删除此卡">✕</b></span></div>
+          <div class="fx-e-row"><input class="raw" data-ci="${ci}" data-ri="0" data-f="raw" value="${esc(c.raw)}" spellcheck="false"></div>
         </div>`;
-      g.forEach((r, ri) => {
-        if (ri > 0) html += '<span class="fx-e-or">‖ 或</span>';
-        const del = `<b class="fx-e-rdel" data-gi="${gi}" data-ri="${ri}" title="删除此行">✕</b>`;
-        if (r.raw != null) {
-          html += `<div class="fx-e-row"><span class="fx-e-tag">原样</span><input class="raw" data-gi="${gi}" data-ri="${ri}" data-f="raw" value="${esc(r.raw)}" spellcheck="false">${del}</div>`;
-        } else if (!r.field) {
-          html += `<div class="fx-e-row"><span class="fx-e-tag">关键词</span><input class="val" data-gi="${gi}" data-ri="${ri}" data-f="value" value="${esc(r.value)}" placeholder="关键词" spellcheck="false">${del}</div>`;
-        } else {
-          html += `<div class="fx-e-row">
-            <input class="fld" list="fofa-edit-fields" data-gi="${gi}" data-ri="${ri}" data-f="field" value="${esc(r.field)}" spellcheck="false">
-            <select data-gi="${gi}" data-ri="${ri}" data-f="op" title="运算符">
-              <option value="="${r.op === '=' ? ' selected' : ''}>模糊 =</option>
-              <option value="=="${r.op === '==' ? ' selected' : ''}>精确 ==</option>
-              <option value="!="${r.op === '!=' ? ' selected' : ''}>排除 !=</option>
-            </select>
-            <input class="val" data-gi="${gi}" data-ri="${ri}" data-f="value" value="${esc(r.value)}" spellcheck="false">
-            ${del}
-          </div>`;
-        }
+        return;
+      }
+      const or = c.join === '||' && (c.rows || []).length > 1;
+      html += `<div class="fx-e-group${or ? ' or' : ''}" data-ci="${ci}">
+        <div class="fx-e-chead">
+          <input class="fx-e-cfld" list="fofa-edit-fields" data-ci="${ci}" data-f="field" value="${esc(c.field)}" placeholder="字段（留空=关键词）" spellcheck="false" title="字段名，如 country / product / icon_hash">
+          <select class="fx-e-cjoin" data-ci="${ci}" data-f="join" title="卡内多值如何拼接">
+            <option value="&&"${c.join === '&&' ? ' selected' : ''}>且 &&</option>
+            <option value="||"${c.join === '||' ? ' selected' : ''}>或 ||</option>
+          </select>
+          <span class="fx-e-tag">${or ? '( 或卡自动加括号 )' : ((c.rows || []).length + ' 值')}</span>
+          <span class="fx-e-cops"><b class="fx-e-cadd" title="在本卡追加一个值（Alt+O）">＋值</b><b class="fx-e-cdel" title="删除整卡">✕</b></span>
+        </div>`;
+      (c.rows || []).forEach((r, ri) => {
+        const conn = ri === 0 ? '' : (c.join === '||' ? '<span class="fx-e-or">‖ 或</span>' : '<span class="fx-e-rowand">且 &&</span>');
+        html += `<div class="fx-e-row">${conn}
+          <select data-ci="${ci}" data-ri="${ri}" data-f="op" title="运算符">
+            <option value="="${r.op === '=' ? ' selected' : ''}>模糊 =</option>
+            <option value="=="${r.op === '==' ? ' selected' : ''}>精确 ==</option>
+            <option value="!="${r.op === '!=' ? ' selected' : ''}>排除 !=</option>
+          </select>
+          <input class="val" data-ci="${ci}" data-ri="${ri}" data-f="value" value="${esc(r.value)}" spellcheck="false" placeholder="值">
+          <b class="fx-e-rdel" data-ci="${ci}" data-ri="${ri}" title="删除此值">✕</b>
+        </div>`;
       });
       html += '</div>';
     });
     wrap.innerHTML = html;
   }
 
+  function renderPresetList(scope) {
+    const list = scope.querySelector('.fx-e-plist');
+    if (!list) return;
+    const arr = loadPresets();
+    list.innerHTML = arr.length ? arr.map((p) => `
+      <div class="fx-e-pitem" data-id="${p.id}">
+        <span class="fx-e-pn" title="${esc(p.name)}">${esc(p.name)}</span>
+        <span class="fx-e-pc" title="点击插入：${esc(p.content)}">${esc(p.content)}</span>
+        <b class="fx-e-pins" title="并入编辑器（同字段同拼接的卡自动合并去重）">插入</b>
+        <b class="fx-e-pdel" title="删除此预设">✕</b>
+      </div>`).join('') : '<div class="fx-e-pempty">暂无预设：输入名称后「💾 存为预设」——保存焦点卡（无焦点卡时保存整条语句）</div>';
+    const btn = scope.querySelector('.fx-e-pbtn');
+    if (btn) btn.textContent = `📦 预设 (${arr.length})`;
+  }
+
   function updateEditorState(scope) {
-    const q = groupsToQuery(editGroups);
+    const q = cardsToQuery(editCards);
     const prev = scope.querySelector('.fx-e-preview');
     if (prev) prev.textContent = q || '（空语句）';
-    const hasField = (name) => editGroups.some((g) => g.some((r) => r.raw == null && r.field === name));
+    const hasField = (name) => editCards.some((c) => c.raw == null && c.field.toLowerCase() === name);
     const mb = scope.querySelector('.fx-e-qmonth');
     if (mb) mb.classList.toggle('on', hasField('after'));
     const cb = scope.querySelector('.fx-e-qcloud');
@@ -1547,55 +1641,46 @@
 
   // 快速开关：再点一次移除；云服务行兼容 is_cloud / is_cloude 两种写法
   function toggleQuick(kind) {
-    const isIt = (r) => r.raw == null && (kind === 'month'
-      ? r.field === 'after'
-      : (r.field === 'is_cloud' || r.field === 'is_cloude'));
-    if (editGroups.some((g) => g.some(isIt))) {
-      editGroups = editGroups.map((g) => g.filter((r) => !isIt(r))).filter((g) => g.length);
-    } else if (kind === 'month') {
-      editGroups.push([{ field: 'after', op: '=', value: monthAgoOf(new Date()) }]);
-    } else {
-      editGroups.push([{ field: 'is_cloud', op: '=', value: 'false' }]);
-    }
+    const isIt = (c) => c.raw == null && (kind === 'month'
+      ? c.field.toLowerCase() === 'after'
+      : (c.field.toLowerCase() === 'is_cloud' || c.field.toLowerCase() === 'is_cloude'));
+    if (editCards.some(isIt)) editCards = editCards.filter((c) => !isIt(c));
+    else if (kind === 'month') editCards.push({ field: 'after', join: '&&', rows: [{ op: '=', value: monthAgoOf(new Date()) }] });
+    else editCards.push({ field: 'is_cloud', join: '&&', rows: [{ op: '=', value: 'false' }] });
     editFocus = null;
     const box = document.getElementById('fofa-toolbox-box');
-    if (box) { renderEditorRows(box); updateEditorState(box); }
+    if (box) { renderEditorCards(box); updateEditorState(box); }
   }
 
-  function focusEditorRow(scope, gi, ri, which) {
-    const el = scope.querySelector(`[data-gi="${gi}"][data-ri="${ri}"][data-f="${which}"]`);
+  function focusEditorCell(scope, ci, ri, which) {
+    const el = scope.querySelector(`[data-ci="${ci}"][data-ri="${ri}"][data-f="${which}"]`);
     if (el) el.focus();
   }
 
-  // Alt+A 新增且(&&)条件组；Alt+O 在焦点行（无则末行）后追加或(||)条件，继承其字段与运算符
-  function addEditorRow(kind) {
+  // Alt+A 新增字段卡；Alt+O 在焦点卡（无则末卡）追加值，继承焦点行/末行运算符
+  function addEditorItem(kind) {
     const pane = document.querySelector('#fofa-toolbox-box .fx-t-pane-edit');
     if (!pane) return;
-    if (kind === 'or' && editGroups.length) {
-      const fg = editFocus && editGroups[editFocus.gi];
-      const src = (fg && fg[editFocus.ri]) || editGroups[editGroups.length - 1].slice(-1)[0];
-      const row = src && src.raw == null && src.field
-        ? { field: src.field, op: src.op === '!=' ? '=' : src.op, value: '' }
-        : { field: '', op: '=', value: '' };
-      let gi, ri;
-      if (fg && fg[editFocus.ri]) {
-        gi = editFocus.gi; ri = editFocus.ri + 1;
-        editGroups[gi].splice(ri, 0, row);
-      } else {
-        gi = editGroups.length - 1;
-        editGroups[gi].push(row);
-        ri = editGroups[gi].length - 1;
+    if (kind === 'row' && editCards.length) {
+      const fc = editFocus && editCards[editFocus.ci];
+      const ci = fc ? editFocus.ci : editCards.length - 1;
+      const card = editCards[ci];
+      if (card && card.raw == null) {
+        const ref = (editFocus && editFocus.ri >= 0 && card.rows[editFocus.ri]) || card.rows[card.rows.length - 1];
+        const row = { op: ref ? ref.op : '=', value: '' };
+        card.rows.push(row);
+        renderEditorCards(pane); updateEditorState(pane);
+        focusEditorCell(pane, ci, card.rows.length - 1, 'value');
+        return;
       }
-      renderEditorRows(pane); updateEditorState(pane);
-      focusEditorRow(pane, gi, ri, row.field ? 'value' : 'field');
-      return;
     }
-    const row = { field: '', op: '=', value: '' };
-    let gi = editGroups.length;
-    if (editFocus && editGroups[editFocus.gi]) gi = editFocus.gi + 1; // 插到焦点组之后
-    editGroups.splice(gi, 0, [row]);
-    renderEditorRows(pane); updateEditorState(pane);
-    focusEditorRow(pane, gi, 0, 'field');
+    const card = { field: '', join: '&&', rows: [{ op: '=', value: '' }] };
+    let ci = editCards.length;
+    if (editFocus && editCards[editFocus.ci]) ci = editFocus.ci + 1; // 插到焦点卡之后
+    editCards.splice(ci, 0, card);
+    renderEditorCards(pane); updateEditorState(pane);
+    const fld = pane.querySelector(`.fx-e-cfld[data-ci="${ci}"]`);
+    if (fld) fld.focus();
   }
 
   function buildEditor(pane) {
@@ -1605,87 +1690,145 @@
         <button class="fx-e-qmonth" title="切换 after=一月内条件（再点一次移除，月末钳制）">📅 一个月内</button>
         <button class="fx-e-qcloud" title="切换 is_cloud=&quot;false&quot; 排除云服务（兼容识别 is_cloude 写法；再点一次移除）">☁️ 排除云服务</button>
         <button class="fx-e-reload" title="放弃当前编辑，重新读取页面语句">↻ 重读语句</button>
+        <button class="fx-e-pbtn" title="展开/收起预设面板">📦 预设</button>
       </div>
-      <div class="fx-e-groups"></div>
+      <div class="fx-e-pbox" style="display:none">
+        <div class="fx-e-prow">
+          <input class="fx-e-pname" placeholder="预设名称，如：地区-中亚" spellcheck="false">
+          <button class="fx-e-psave" title="保存焦点卡为预设（无焦点卡时保存整条语句）">💾 存为预设</button>
+        </div>
+        <div class="fx-e-plist"></div>
+      </div>
+      <div class="fx-e-cards"></div>
       <div class="fx-e-adds">
-        <button class="fx-e-andb" title="新增一个且(&&;)条件组（Alt+A）">＋ 且条件 Alt+A</button>
-        <button class="fx-e-orb" title="在焦点行后追加或(||)条件，自动继承该行字段（Alt+O）">＋ 或条件 Alt+O</button>
+        <button class="fx-e-andb" title="新增一张字段卡（Alt+A）">＋ 字段卡 Alt+A</button>
+        <button class="fx-e-orb" title="在焦点卡追加一个值，继承运算符（Alt+O）">＋ 值 Alt+O</button>
       </div>
       <div class="fx-e-preview"></div>
       <div class="fx-e-actions">
         <button class="fx-e-search" title="按预览语句发起查询（编辑器内回车同）">🔍 搜索</button>
         <button class="fx-e-copy" title="复制预览语句">📋 复制</button>
       </div>
-      <div class="fx-e-hint">组间是且(&amp;&amp;)、组内是或(||) · 行＝字段/运算符/值 · 回车搜索 · Alt+Q 开关工具箱 · 搜索遵循「在本页打开」设置</div>`;
+      <div class="fx-e-hint">按字段分卡编辑：同字段的值集中在一张卡，卡内选 且(&&)/或(||)，或卡自动加括号 · 预设可把常用片段一键并入 · 回车搜索 · Alt+Q 开关工具箱</div>`;
+    renderPresetList(pane);
+
+    // 预设面板：开关 / 保存 / 插入 / 删除
+    const pbox = pane.querySelector('.fx-e-pbox');
+    pane.querySelector('.fx-e-pbtn').addEventListener('click', () => {
+      pbox.style.display = pbox.style.display === 'none' ? '' : 'none';
+    });
+    pane.querySelector('.fx-e-psave').addEventListener('click', () => {
+      const fc = editFocus && editCards[editFocus.ci];
+      const content = (fc && fc.raw == null) ? cardToQuery(fc) : cardsToQuery(editCards);
+      if (!content) { importToast('⚠️ 没有可保存的内容'); return; }
+      const nameEl = pane.querySelector('.fx-e-pname');
+      const name = (nameEl.value || '').trim() || (fc && fc.raw == null && fc.field ? fc.field : '预设');
+      const arr = loadPresets();
+      arr.push({ id: Date.now() + Math.floor(Math.random() * 1e6), name, content, ts: new Date().toLocaleString() });
+      if (savePresets(arr)) {
+        nameEl.value = '';
+        renderPresetList(pane);
+        importToast(`✅ 已存预设「<b>${esc(name)}</b>」`);
+      }
+    });
+    pane.querySelector('.fx-e-plist').addEventListener('click', (e) => {
+      const item = e.target.closest && e.target.closest('.fx-e-pitem');
+      if (!item) return;
+      const p = loadPresets().find((x) => String(x.id) === item.dataset.id);
+      if (!p) return;
+      if (e.target.closest('.fx-e-pdel')) {
+        savePresets(loadPresets().filter((x) => String(x.id) !== item.dataset.id));
+        renderPresetList(pane);
+        return;
+      }
+      if (e.target.closest('.fx-e-pins') || e.target.closest('.fx-e-pc')) {
+        editCards = mergeCards(editCards, parseQueryToCards(p.content));
+        renderEditorCards(pane); updateEditorState(pane);
+      }
+    });
 
     pane.querySelector('.fx-e-qmonth').addEventListener('click', () => toggleQuick('month'));
     pane.querySelector('.fx-e-qcloud').addEventListener('click', () => toggleQuick('cloud'));
     pane.querySelector('.fx-e-reload').addEventListener('click', () => parseEditorFromPage());
-    pane.querySelector('.fx-e-andb').addEventListener('click', () => addEditorRow('and'));
-    pane.querySelector('.fx-e-orb').addEventListener('click', () => addEditorRow('or'));
+    pane.querySelector('.fx-e-andb').addEventListener('click', () => addEditorItem('card'));
+    pane.querySelector('.fx-e-orb').addEventListener('click', () => addEditorItem('row'));
 
-    const groups = pane.querySelector('.fx-e-groups');
-    groups.addEventListener('input', (e) => {
+    const cards = pane.querySelector('.fx-e-cards');
+    cards.addEventListener('input', (e) => {
       const el = e.target;
-      if (!el.dataset || el.dataset.f === undefined) return;
-      const row = editGroups[+el.dataset.gi] && editGroups[+el.dataset.gi][+el.dataset.ri];
-      if (!row) return;
-      if (el.dataset.f === 'field') row.field = el.value.trim().toLowerCase();
-      else if (el.dataset.f === 'value') row.value = el.value;
-      else if (el.dataset.f === 'raw') row.raw = el.value;
+      if (!el.dataset || el.dataset.ci === undefined) return;
+      const card = editCards[+el.dataset.ci];
+      if (!card) return;
+      if (el.dataset.f === 'raw') card.raw = el.value;
+      else if (el.dataset.f === 'field') card.field = el.value.trim().toLowerCase();
+      else if (el.dataset.f === 'value') {
+        const row = card.rows && card.rows[+el.dataset.ri];
+        if (row) row.value = el.value;
+      }
       updateEditorState(pane);
     });
-    groups.addEventListener('change', (e) => {
-      if (e.target.dataset && e.target.dataset.f === 'op') {
-        const row = editGroups[+e.target.dataset.gi] && editGroups[+e.target.dataset.gi][+e.target.dataset.ri];
-        if (row) { row.op = e.target.value; updateEditorState(pane); }
+    cards.addEventListener('change', (e) => {
+      const el = e.target;
+      if (!el.dataset || el.dataset.ci === undefined) return;
+      const card = editCards[+el.dataset.ci];
+      if (!card) return;
+      if (el.dataset.f === 'op') {
+        const row = card.rows && card.rows[+el.dataset.ri];
+        if (row) { row.op = el.value; updateEditorState(pane); }
+      } else if (el.dataset.f === 'join') {
+        card.join = el.value;
+        renderEditorCards(pane); updateEditorState(pane); // 行间连接符与括号高亮随之变化
       }
     });
-    groups.addEventListener('focusin', (e) => {
-      if (e.target.dataset && e.target.dataset.gi !== undefined) editFocus = { gi: +e.target.dataset.gi, ri: +e.target.dataset.ri };
+    cards.addEventListener('focusin', (e) => {
+      if (!e.target.dataset || e.target.dataset.ci === undefined) return;
+      editFocus = { ci: +e.target.dataset.ci, ri: e.target.dataset.ri === undefined ? -1 : +e.target.dataset.ri };
     });
-    groups.addEventListener('click', (e) => {
+    cards.addEventListener('click', (e) => {
       const rd = e.target.closest && e.target.closest('.fx-e-rdel');
       if (rd) {
-        const gi = +rd.dataset.gi;
-        editGroups[gi].splice(+rd.dataset.ri, 1);
-        if (!editGroups[gi].length) editGroups.splice(gi, 1);
-        editFocus = null;
-        renderEditorRows(pane); updateEditorState(pane);
+        const ci = +rd.dataset.ci;
+        const card = editCards[ci];
+        if (card && card.rows) {
+          card.rows.splice(+rd.dataset.ri, 1);
+          if (!card.rows.length) editCards.splice(ci, 1);
+          editFocus = null;
+          renderEditorCards(pane); updateEditorState(pane);
+        }
         return;
       }
-      const gd = e.target.closest && e.target.closest('.fx-e-gdel');
-      if (gd) {
-        editGroups.splice(+gd.closest('.fx-e-group').dataset.gi, 1);
+      const cd = e.target.closest && e.target.closest('.fx-e-cdel');
+      if (cd) {
+        editCards.splice(+cd.closest('.fx-e-group').dataset.ci, 1);
         editFocus = null;
-        renderEditorRows(pane); updateEditorState(pane);
+        renderEditorCards(pane); updateEditorState(pane);
         return;
       }
-      const gw = e.target.closest && e.target.closest('.fx-e-grow');
-      if (gw) {
-        const gi = +gw.closest('.fx-e-group').dataset.gi;
-        const src = editGroups[gi].slice(-1)[0];
-        const row = src && src.raw == null && src.field
-          ? { field: src.field, op: src.op === '!=' ? '=' : src.op, value: '' }
-          : { field: '', op: '=', value: '' };
-        editGroups[gi].push(row);
-        renderEditorRows(pane); updateEditorState(pane);
-        focusEditorRow(pane, gi, editGroups[gi].length - 1, row.field ? 'value' : 'field');
+      const ca = e.target.closest && e.target.closest('.fx-e-cadd');
+      if (ca) {
+        const ci = +ca.closest('.fx-e-group').dataset.ci;
+        const card = editCards[ci];
+        if (card && card.raw == null) {
+          const ref = card.rows[card.rows.length - 1];
+          card.rows.push({ op: ref ? ref.op : '=', value: '' });
+          renderEditorCards(pane); updateEditorState(pane);
+          focusEditorCell(pane, ci, card.rows.length - 1, 'value');
+        }
       }
     });
 
     pane.querySelector('.fx-e-search').addEventListener('click', () => {
-      const q = groupsToQuery(editGroups);
+      const q = cardsToQuery(editCards);
       if (q) openTab(q);
     });
     pane.querySelector('.fx-e-copy').addEventListener('click', (ev) => {
-      const q = groupsToQuery(editGroups);
+      const q = cardsToQuery(editCards);
       if (q) copyText(q, ev.currentTarget);
     });
     // 编辑器内回车直接搜索
     pane.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.isComposing) {
-        const q = groupsToQuery(editGroups);
+        const q = cardsToQuery(editCards);
         if (q) { e.preventDefault(); openTab(q); }
       }
     });
@@ -2125,8 +2268,8 @@
     }
     const pane = document.querySelector('#fofa-toolbox-box .fx-t-pane-edit');
     if (pane && pane.classList.contains('on')) {
-      if (e.code === 'KeyA') { e.preventDefault(); addEditorRow('and'); }
-      else if (e.code === 'KeyO') { e.preventDefault(); addEditorRow('or'); }
+      if (e.code === 'KeyA') { e.preventDefault(); addEditorItem('card'); }
+      else if (e.code === 'KeyO') { e.preventDefault(); addEditorItem('row'); }
     }
   }, true);
 
