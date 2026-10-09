@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.12.7
+// @version      3.13.0
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.12.7';
+  const VER = '3.13.0';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -518,6 +518,8 @@
 #fofa-toolbox-box .fx-l-table td[contenteditable]:focus{outline:1.5px solid #f1961f;outline-offset:-1.5px;background:#fffdf5}
 #fofa-toolbox-box .fx-l-mono{font-family:Consolas,Menlo,monospace;font-size:11px}
 #fofa-toolbox-box .fx-l-ops b{cursor:pointer;color:#8b949e;font-weight:400;margin-right:6px}
+#fofa-toolbox-box .fx-l-ops b.fx-l-up,#fofa-toolbox-box .fx-l-ops b.fx-l-down{margin-right:2px;font-family:Consolas,Menlo,monospace}
+#fofa-toolbox-box .fx-l-ops b.fx-l-up:hover,#fofa-toolbox-box .fx-l-ops b.fx-l-down:hover{color:#f1961f}
 #fofa-toolbox-box .fx-l-ops b.fx-l-search:hover{color:#f1961f}
 #fofa-toolbox-box .fx-l-ops b.fx-l-cal:hover{color:#f1961f}
 #fofa-toolbox-box .fx-l-ops b.fx-l-del:hover{color:#e5484d}
@@ -1143,7 +1145,7 @@
     const sorted = arr.slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
     const rows = sorted.map((it) => `<tr data-id="${it.id}"${it.pin ? ' class="fx-l-userpin"' : ''}>${LIB_FIELDS.map((f) =>
       `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
-    ).join('')}<td class="fx-l-ops"><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
+    ).join('')}<td class="fx-l-ops"><b class="fx-l-up" title="上移一位（置顶条目仍优先，跨置顶边界不移动）">↑</b><b class="fx-l-down" title="下移一位">↓</b><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
     // 只负责渲染内容；事件在 openToolbox 里对 pane 挂一次（委托，重渲染不影响）
     pane.innerHTML = `
       <div class="fx-l-tools">
@@ -1180,6 +1182,27 @@
       if (del) {
         const id = del.closest('tr').dataset.id;
         saveLib(loadLib().filter((x) => String(x.id) !== id));
+        renderLib(pane);
+        return;
+      }
+      // ↑/↓：手动排序。展示顺序=置顶在前（稳定排序），交换相邻两条在存储数组里的位置；
+      // 跨置顶边界不移动（否则排序会把它们弹回去，按钮看似失灵）
+      const mv = e.target.closest && e.target.closest('.fx-l-up,.fx-l-down');
+      if (mv) {
+        const id = mv.closest('tr').dataset.id;
+        const up = mv.classList.contains('fx-l-up');
+        const arr2 = loadLib();
+        const disp = arr2.map((it, i) => ({ it, i }))
+          .sort((a, b) => (b.it.pin ? 1 : 0) - (a.it.pin ? 1 : 0)); // 与渲染一致
+        const pos = disp.findIndex((d) => String(d.it.id) === id);
+        const tgt = up ? pos - 1 : pos + 1;
+        if (pos >= 0 && tgt >= 0 && tgt < disp.length
+          && (disp[pos].it.pin ? 1 : 0) === (disp[tgt].it.pin ? 1 : 0)) {
+          const tmp = arr2[disp[pos].i];
+          arr2[disp[pos].i] = arr2[disp[tgt].i];
+          arr2[disp[tgt].i] = tmp;
+          saveLib(arr2);
+        }
         renderLib(pane);
         return;
       }
