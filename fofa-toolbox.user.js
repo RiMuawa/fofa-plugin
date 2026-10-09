@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.14.0
+// @version      3.15.0
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.14.0';
+  const VER = '3.15.0';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -518,9 +518,12 @@
 #fofa-toolbox-box .fx-l-table td[contenteditable]:focus{outline:1.5px solid #f1961f;outline-offset:-1.5px;background:#fffdf5}
 #fofa-toolbox-box .fx-l-mono{font-family:Consolas,Menlo,monospace;font-size:11px}
 #fofa-toolbox-box .fx-l-ops b{cursor:pointer;color:#8b949e;font-weight:400;margin-right:6px}
-#fofa-toolbox-box .fx-l-ops b.fx-l-up,#fofa-toolbox-box .fx-l-ops b.fx-l-down{margin-right:2px;font-family:Consolas,Menlo,monospace}
-#fofa-toolbox-box .fx-l-ops b.fx-l-up:hover,#fofa-toolbox-box .fx-l-ops b.fx-l-down:hover{color:#f1961f}
 #fofa-toolbox-box .fx-l-ops b.fx-l-search:hover{color:#f1961f}
+#fofa-toolbox-box td.fx-rowdrag{cursor:grab;color:#c4cdd5;text-align:center;user-select:none;font-size:13px}
+#fofa-toolbox-box td.fx-rowdrag:active{cursor:grabbing;color:#f1961f}
+#fofa-toolbox-box tr.fx-dragging td{opacity:.45}
+#fofa-toolbox-box tr.fx-drop-above td{border-top:2px solid #f1961f}
+#fofa-toolbox-box tr.fx-drop-below td{border-bottom:2px solid #f1961f}
 #fofa-toolbox-box .fx-l-ops b.fx-l-cal:hover{color:#f1961f}
 #fofa-toolbox-box .fx-l-ops b.fx-l-del:hover{color:#e5484d}
 #fofa-toolbox-box .fx-l-ops b.fx-l-pinbtn:hover{color:#b25e09}
@@ -1139,13 +1142,59 @@
     return hit;
   }
 
+  /* ---------------- 表格行拖动排序（指纹库/知识库共用） ----------------
+     行首手柄（draggable）拖起，拖到目标行的上半/下半决定插到其前/其后；
+     canDrop 校验约束（指纹库：同置顶状态；知识库：同母厂组），不满足则禁止放置；
+     move 执行移动并负责保存与重绘 */
+  function attachRowDrag(pane, canDrop, move) {
+    let dragId = null;
+    pane.addEventListener('dragstart', (e) => {
+      const h = e.target.closest && e.target.closest('.fx-rowdrag');
+      if (!h) return;
+      const tr = h.closest('tr');
+      dragId = tr.dataset.id;
+      tr.classList.add('fx-dragging');
+      try { e.dataTransfer.setData('text/plain', dragId); } catch (err) { /* Firefox 必需 */ }
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    pane.addEventListener('dragend', () => {
+      dragId = null;
+      pane.querySelectorAll('tr.fx-dragging,tr.fx-drop-above,tr.fx-drop-below').forEach((tr) =>
+        tr.classList.remove('fx-dragging', 'fx-drop-above', 'fx-drop-below'));
+    });
+    const clearMarks = () => pane.querySelectorAll('tr.fx-drop-above,tr.fx-drop-below')
+      .forEach((x) => x.classList.remove('fx-drop-above', 'fx-drop-below'));
+    pane.addEventListener('dragover', (e) => {
+      const tr = e.target.closest && e.target.closest('tr[data-id]');
+      clearMarks();
+      if (!dragId || !tr || tr.dataset.id === dragId || !canDrop(dragId, tr.dataset.id)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const r = tr.getBoundingClientRect();
+      const before = (e.clientY - r.top) < r.height / 2;
+      tr.classList.add(before ? 'fx-drop-above' : 'fx-drop-below');
+      tr.dataset.dropBefore = before ? '1' : '0';
+    });
+    pane.addEventListener('drop', (e) => {
+      const tr = e.target.closest && e.target.closest('tr[data-id]');
+      if (!dragId || !tr || tr.dataset.id === dragId) return;
+      e.preventDefault();
+      const before = tr.dataset.dropBefore === '1';
+      const id = dragId;
+      dragId = null;
+      pane.querySelectorAll('tr.fx-dragging,tr.fx-drop-above,tr.fx-drop-below').forEach((x) =>
+        x.classList.remove('fx-dragging', 'fx-drop-above', 'fx-drop-below'));
+      move(id, tr.dataset.id, before);
+    });
+  }
+
   function renderLib(pane) {
     const arr = loadLib();
     // 用户置顶的条目排在前面（sort 稳定，保持原有顺序）
     const sorted = arr.slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
-    const rows = sorted.map((it) => `<tr data-id="${it.id}"${it.pin ? ' class="fx-l-userpin"' : ''}>${LIB_FIELDS.map((f) =>
+    const rows = sorted.map((it) => `<tr data-id="${it.id}"${it.pin ? ' class="fx-l-userpin"' : ''}><td class="fx-rowdrag" draggable="true" title="拖动调整顺序（置顶条目仍优先）">⠿</td>${LIB_FIELDS.map((f) =>
       `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
-    ).join('')}<td class="fx-l-ops"><b class="fx-l-up" title="上移一位（置顶条目仍优先，跨置顶边界不移动）">↑</b><b class="fx-l-down" title="下移一位">↓</b><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
+    ).join('')}<td class="fx-l-ops"><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
     // 只负责渲染内容；事件在 openToolbox 里对 pane 挂一次（委托，重渲染不影响）
     pane.innerHTML = `
       <div class="fx-l-tools">
@@ -1156,8 +1205,8 @@
         <button class="fx-l-imp" title="从本脚本导出的 JSON/CSV 文件导入（Excel 另存的 GBK 编码 CSV 也能识别）：按搜索语句去重，已存在的自动跳过">导入</button>
       </div>
       <div class="fx-l-tablewrap"><table class="fx-l-table">
-        <thead><tr>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="${LIB_FIELDS.length + 1}" class="fx-l-empty">暂无收藏条目：点「＋ 新建」即可收藏当前语句（结果页自动填写），或手动添加</td></tr>`}</tbody>
+        <thead><tr><th style="width:26px"></th>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="${LIB_FIELDS.length + 2}" class="fx-l-empty">暂无收藏条目：点「＋ 新建」即可收藏当前语句（结果页自动填写），或手动添加</td></tr>`}</tbody>
       </table></div>
       <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 📌 置顶 · 🔍 搜索（after 内 YESTERDAY=昨天 / LastMonth=一月前） · 📅 after 改为一月前搜索 · 数据保存在浏览器本地（localStorage）</div>`;
   }
@@ -1177,32 +1226,31 @@
       saveLib(arr2);
     });
 
+    // 拖动排序：同一置顶状态内移动（跨边界不允许，否则稳定排序会把它弹回去）
+    attachRowDrag(pane,
+      (a, b) => {
+        const arr2 = loadLib();
+        const A = arr2.find((x) => String(x.id) === a);
+        const B = arr2.find((x) => String(x.id) === b);
+        return !!(A && B && (A.pin ? 1 : 0) === (B.pin ? 1 : 0));
+      },
+      (id, targetId, before) => {
+        const arr2 = loadLib();
+        const drag = arr2.find((x) => String(x.id) === id);
+        if (!drag) { renderLib(pane); return; }
+        arr2.splice(arr2.indexOf(drag), 1);
+        const ti = arr2.findIndex((x) => String(x.id) === targetId);
+        if (ti < 0) { renderLib(pane); return; }
+        arr2.splice(before ? ti : ti + 1, 0, drag);
+        saveLib(arr2);
+        renderLib(pane);
+      });
+
     pane.addEventListener('click', (e) => {
       const del = e.target.closest && e.target.closest('.fx-l-del');
       if (del) {
         const id = del.closest('tr').dataset.id;
         saveLib(loadLib().filter((x) => String(x.id) !== id));
-        renderLib(pane);
-        return;
-      }
-      // ↑/↓：手动排序。展示顺序=置顶在前（稳定排序），交换相邻两条在存储数组里的位置；
-      // 跨置顶边界不移动（否则排序会把它们弹回去，按钮看似失灵）
-      const mv = e.target.closest && e.target.closest('.fx-l-up,.fx-l-down');
-      if (mv) {
-        const id = mv.closest('tr').dataset.id;
-        const up = mv.classList.contains('fx-l-up');
-        const arr2 = loadLib();
-        const disp = arr2.map((it, i) => ({ it, i }))
-          .sort((a, b) => (b.it.pin ? 1 : 0) - (a.it.pin ? 1 : 0)); // 与渲染一致
-        const pos = disp.findIndex((d) => String(d.it.id) === id);
-        const tgt = up ? pos - 1 : pos + 1;
-        if (pos >= 0 && tgt >= 0 && tgt < disp.length
-          && (disp[pos].it.pin ? 1 : 0) === (disp[tgt].it.pin ? 1 : 0)) {
-          const tmp = arr2[disp[pos].i];
-          arr2[disp[pos].i] = arr2[disp[tgt].i];
-          arr2[disp[tgt].i] = tmp;
-          saveLib(arr2);
-        }
         renderLib(pane);
         return;
       }
@@ -1952,18 +2000,18 @@
     const wrap = pane.querySelector('.fx-k-wrap');
     if (!wrap) return;
     const list = kbFiltered(pane.dataset.filter || '');
-    const rows = list.map((it) => `<tr data-id="${it.id}">${KB_FIELDS.map((f) =>
+    const rows = list.map((it) => `<tr data-id="${it.id}"><td class="fx-rowdrag" draggable="true" title="拖动调整顺序（仅在同一母厂组内）">⠿</td>${KB_FIELDS.map((f) =>
       `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
     ).join('')}
       <td class="fx-k-imgs" tabindex="0" title="点击聚焦后 Ctrl+V 粘贴产品截图">${(it.images || []).map((src, i) =>
         `<span class="fx-k-thumbwrap"><img class="fx-k-thumb" data-i="${i}" src="${src}" title="点击放大"><b class="fx-k-imgdel" data-i="${i}" title="删除此图">✕</b></span>`
       ).join('')}<b class="fx-k-addimg" title="选择图片文件">📎</b>${(it.images || []).length ? '' : '<span class="fx-k-hint">点击后 Ctrl+V 粘贴</span>'}</td>
-      <td class="fx-l-ops"><b class="fx-l-up fx-k-up" title="在同一母厂组内上移一位">↑</b><b class="fx-l-down fx-k-down" title="在同一母厂组内下移一位">↓</b><b class="fx-k-del" title="删除此条">✕</b></td></tr>`).join('');
+      <td class="fx-l-ops"><b class="fx-k-del" title="删除此条">✕</b></td></tr>`).join('');
     const cnt = pane.querySelector('.fx-l-count');
     if (cnt) cnt.textContent = `共 ${list.length} 条`;
     wrap.innerHTML = `<table class="fx-l-table">
-      <thead><tr>${KB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>产品截图</th><th>操作</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="${KB_FIELDS.length + 2}" class="fx-l-empty">暂无记录：点「＋ 新建」，在结果页会自动预填 Server/Title；截图列点击后 Ctrl+V 粘贴产品前端</td></tr>`}</tbody>
+      <thead><tr><th style="width:26px"></th>${KB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>产品截图</th><th>操作</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="${KB_FIELDS.length + 3}" class="fx-l-empty">暂无记录：点「＋ 新建」，在结果页会自动预填 Server/Title；截图列点击后 Ctrl+V 粘贴产品前端</td></tr>`}</tbody>
     </table>`;
   }
 
@@ -2105,30 +2153,30 @@
       if (got) e.preventDefault();
     });
 
-    pane.addEventListener('click', (e) => {
-      // ↑/↓：同一母厂组内手动排序。先把整组按当前展示顺序归一 order（0..n-1），再交换相邻两条
-      const mv = e.target.closest && e.target.closest('.fx-k-up,.fx-k-down');
-      if (mv) {
+    // 拖动排序：仅同一母厂组内；组内先归一 order 再按落点插入
+    attachRowDrag(pane,
+      (a, b) => {
         const arr = loadKb();
-        const it = arr.find((x) => String(x.id) === mv.closest('tr').dataset.id);
-        if (it) {
-          const group = arr.filter((x) => String(x.parent || '') === String(it.parent || ''))
-            .sort((a, b) => (a.order || 0) - (b.order || 0)
-              || String(a.name || '').localeCompare(String(b.name || ''), 'zh'));
-          group.forEach((g, i) => { g.order = i; });
-          const pos = group.indexOf(it);
-          const tgt = mv.classList.contains('fx-k-up') ? pos - 1 : pos + 1;
-          if (tgt >= 0 && tgt < group.length) {
-            const tmp = group[pos].order;
-            group[pos].order = group[tgt].order;
-            group[tgt].order = tmp;
-            if (saveKb(arr)) renderKb(pane);
-            return;
-          }
-        }
-        renderKb(pane);
-        return;
-      }
+        const A = arr.find((x) => String(x.id) === a);
+        const B = arr.find((x) => String(x.id) === b);
+        return !!(A && B && String(A.parent || '') === String(B.parent || ''));
+      },
+      (id, targetId, before) => {
+        const arr = loadKb();
+        const drag = arr.find((x) => String(x.id) === id);
+        if (!drag) { renderKb(pane); return; }
+        const group = arr.filter((x) => String(x.parent || '') === String(drag.parent || ''))
+          .sort((a, b) => (a.order || 0) - (b.order || 0)
+            || String(a.name || '').localeCompare(String(b.name || ''), 'zh'));
+        group.splice(group.indexOf(drag), 1);
+        const ti = group.findIndex((x) => String(x.id) === targetId);
+        if (ti < 0) { renderKb(pane); return; }
+        group.splice(before ? ti : ti + 1, 0, drag);
+        group.forEach((g, i) => { g.order = i; });
+        if (saveKb(arr)) renderKb(pane);
+      });
+
+    pane.addEventListener('click', (e) => {
       const del = e.target.closest && e.target.closest('.fx-k-del');
       if (del) {
         saveKb(loadKb().filter((x) => String(x.id) !== del.closest('tr').dataset.id));
