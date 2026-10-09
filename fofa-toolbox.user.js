@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.15.0
+// @version      3.16.0
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.15.0';
+  const VER = '3.16.0';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -519,6 +519,7 @@
 #fofa-toolbox-box .fx-l-mono{font-family:Consolas,Menlo,monospace;font-size:11px}
 #fofa-toolbox-box .fx-l-ops b{cursor:pointer;color:#8b949e;font-weight:400;margin-right:6px}
 #fofa-toolbox-box .fx-l-ops b.fx-l-search:hover{color:#f1961f}
+#fofa-toolbox-box .fx-l-ops b.fx-l-dedup:hover{color:#f1961f}
 #fofa-toolbox-box td.fx-rowdrag{cursor:grab;color:#c4cdd5;text-align:center;user-select:none;font-size:13px}
 #fofa-toolbox-box td.fx-rowdrag:active{cursor:grabbing;color:#f1961f}
 #fofa-toolbox-box tr.fx-dragging td{opacity:.45}
@@ -798,6 +799,7 @@
      另有厂商/型号/备注等手动字段。表格式编辑，localStorage 持久化，JSON/CSV 导出。 */
 
   const LIB_KEY = 'fofa-toolbox-fingerprints';
+  let libUndoSnap = null; // 最近一次去重操作前的整库快照（↩ 撤销用）
   const LIB_FIELDS = [
     { key: 'name', label: '名称', w: '80px' },
     { key: 'query', label: '搜索语句', w: '180px', mono: true },
@@ -1194,7 +1196,7 @@
     const sorted = arr.slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
     const rows = sorted.map((it) => `<tr data-id="${it.id}"${it.pin ? ' class="fx-l-userpin"' : ''}><td class="fx-rowdrag" draggable="true" title="拖动调整顺序（置顶条目仍优先）">⠿</td>${LIB_FIELDS.map((f) =>
       `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
-    ).join('')}<td class="fx-l-ops"><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
+    ).join('')}<td class="fx-l-ops"><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-dedup" title="语句去重瘦身：同字段只保留最后一条定位条件、丢弃中间排除与冗余分类；可撤销">🧹</b><b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
     // 只负责渲染内容；事件在 openToolbox 里对 pane 挂一次（委托，重渲染不影响）
     pane.innerHTML = `
       <div class="fx-l-tools">
@@ -1203,6 +1205,8 @@
         <button class="fx-l-expj" title="导出为 JSON 文件">导出 JSON</button>
         <button class="fx-l-expc" title="导出为 CSV 文件（Excel 可直接打开）">导出 CSV</button>
         <button class="fx-l-imp" title="从本脚本导出的 JSON/CSV 文件导入（Excel 另存的 GBK 编码 CSV 也能识别）：按搜索语句去重，已存在的自动跳过">导入</button>
+        <button class="fx-l-dedupall" title="对所有条目的语句执行去重瘦身：同字段只保留最后一条定位条件、丢弃中间排除与冗余分类；完成后可撤销">🧹 全库去重</button>
+        <button class="fx-l-undo"${libUndoSnap ? '' : ' style="display:none"'} title="恢复最近一次去重前的完整备份（会覆盖其后的修改）">↩ 撤销去重</button>
       </div>
       <div class="fx-l-tablewrap"><table class="fx-l-table">
         <thead><tr><th style="width:26px"></th>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
@@ -1252,6 +1256,48 @@
         const id = del.closest('tr').dataset.id;
         saveLib(loadLib().filter((x) => String(x.id) !== id));
         renderLib(pane);
+        return;
+      }
+      // 🧹：单条语句去重瘦身
+      const dd = e.target.closest && e.target.closest('.fx-l-dedup');
+      if (dd) {
+        const arr2 = loadLib();
+        const it = arr2.find((x) => String(x.id) === dd.closest('tr').dataset.id);
+        if (!it || !it.query) return;
+        const before = String(it.query).trim();
+        const q2 = dedupeQuery(before);
+        if (q2 === before) { importToast('此条语句没有可去重的内容'); return; }
+        libUndoSnap = JSON.parse(JSON.stringify(arr2));
+        it.query = q2;
+        saveLib(arr2);
+        renderLib(pane);
+        importToast(`✅ 已去重（${before.length} 字 → <b>${q2.length}</b> 字），失误可点「↩ 撤销去重」`);
+        return;
+      }
+      // 🧹 全库去重
+      if (e.target.closest('.fx-l-dedupall')) {
+        const arr2 = loadLib();
+        const snap = JSON.parse(JSON.stringify(arr2)); // 修改前拍快照
+        let changed = 0;
+        for (const it of arr2) {
+          if (!it.query) continue;
+          const before = String(it.query).trim();
+          const q2 = dedupeQuery(before);
+          if (q2 !== before) { it.query = q2; changed++; }
+        }
+        libUndoSnap = changed ? snap : null;
+        saveLib(arr2);
+        renderLib(pane);
+        importToast(changed ? `✅ 全库去重完成：<b>${changed}</b> 条语句被简化，失误可点「↩ 撤销去重」` : '全库没有可去重的内容');
+        return;
+      }
+      // ↩ 撤销去重
+      if (e.target.closest('.fx-l-undo')) {
+        if (!libUndoSnap) return;
+        saveLib(libUndoSnap);
+        libUndoSnap = null;
+        renderLib(pane);
+        importToast('↩ 已恢复去重前的指纹库');
         return;
       }
       // 📌：置顶/取消置顶
@@ -1622,6 +1668,40 @@
       else parts.push(rows.join(' && '));
     }
     return parts.join(' && ');
+  }
+
+  /* 指纹库语句去重瘦身（纯函数，基于字段卡）：
+     1) 同字段的且卡里存在包含条件(=/==) -> 只保留最后一条（用户最终定位的条件），
+        该字段的全部 != 中间排除一并丢弃（正条件已隐含排除其他值）；
+     2) 纯排除卡是有效过滤 -> 保留，仅去掉完全重复的行与值为 - 的无效条件；
+     3) product 存在包含条件时，category 卡视为冗余丢弃（FOFA 产品隶属分类）；
+     4) 或组卡（多国并列等）、关键词卡、原样片段不动。 */
+  function dedupeQuery(q) {
+    const cards = parseQueryToCards(q);
+    const hasPosProduct = cards.some((c) => c.raw == null
+      && c.field.toLowerCase() === 'product'
+      && (c.rows || []).some((r) => r.op === '=' || r.op === '=='));
+    const out = [];
+    for (const c of cards) {
+      if (c.raw != null || !c.field || c.join === '||') { out.push(c); continue; }
+      if (c.field.toLowerCase() === 'category' && hasPosProduct) continue;
+      const positives = (c.rows || []).filter((r) => r.op !== '!=' && r.value !== '-');
+      if (positives.length) {
+        out.push({ field: c.field, join: c.join, rows: [positives[positives.length - 1]] });
+      } else {
+        const seen = new Set();
+        const rows = [];
+        for (const r of c.rows || []) {
+          if (r.value === '-') continue;
+          const k = r.op + '' + r.value;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          rows.push(r);
+        }
+        if (rows.length) out.push({ field: c.field, join: c.join, rows });
+      }
+    }
+    return cardsToQuery(out);
   }
 
   // 预设并入（可单测）：同字段同拼接方式的卡合并行并去重，其余追加为新卡

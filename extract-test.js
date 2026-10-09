@@ -257,5 +257,16 @@ eq('知识库-仅备注保留', kbNormEntry({ note: 'n' }).note, 'n');
 eq('知识库-order数字保留', kbNormEntry({ name: 'X', order: 3 }).order, 3);
 eq('知识库-order非法丢弃', 'order' in kbNormEntry({ name: 'X', order: 'abc' }), false);
 
+// ===== 指纹库语句去重瘦身 =====
+const dedupeQuery = eval('(function(){' + grabFn('splitTop') + '\n' + grabFn('splitOrTop') + '\n' + grabFn('stripWrapParens') + '\n' + grabFn('parseCondOne') + '\n' + grabFn('parseQueryToCards') + '\n' + grabFn('cardRowQ') + '\n' + grabFn('cardsToQuery') + '\n' + grabFn('dedupeQuery') + '\nreturn dedupeQuery;})()');
+const messyQ = '((country="PK" || country="IN" || country="IR" || country="KZ" || country="UZ" || country="KG" || country="TJ" || country="TM" || country="AF" || country="PK") && after="2026-08-29" && is_cloud="false" ) && category = "视频监控" && product!="AUTOMATTIC-WordPress" && product!="HIKVISION-视频监控" && product!="Dahua-NVR" && product!="FORTINET-防火墙" && product!="uniview-视频监控" && product!="视频监控" && product!="ZTE-公司产品" && product!="netis-ADSL-Modem-Router" && product="NOKIA-Fiber-ONT"';
+eq('去重-用户示例', dedupeQuery(messyQ),
+  '(country="PK" || country="IN" || country="IR" || country="KZ" || country="UZ" || country="KG" || country="TJ" || country="TM" || country="AF" || country="PK") && after="2026-08-29" && is_cloud="false" && product="NOKIA-Fiber-ONT"');
+eq('去重-纯排除卡保留并去重复行', dedupeQuery('product!="A" && product!="A" && product!="B" && country="CN"'), 'product!="A" && product!="B" && country="CN"');
+eq('去重-无product定位时category保留', dedupeQuery('category="视频监控" && title="NVR login" && product!="X"'), 'category="视频监控" && title="NVR login" && product!="X"');
+eq('去重-同字段多条包含条件保留最后', dedupeQuery('product="A" && product="B"'), 'product="B"');
+eq('去重-未知值占位丢弃', dedupeQuery('server="-" && title="x"'), 'title="x"');
+eq('去重-干净语句不变', dedupeQuery('title="x" && port="80"'), 'title="x" && port="80"');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
