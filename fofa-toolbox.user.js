@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.13.0
+// @version      3.14.0
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.13.0';
+  const VER = '3.14.0';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -1516,33 +1516,36 @@
   }
 
   // 语句 -> 字段卡数组：顶层按 && 分段后，同字段的零散单行并成一张「且」卡（保持首见位置），
-  // 纯同字段的或组成为一张「或」卡，跨字段或组等其余片段整段原样保留
+  // 纯同字段的或组成为一张「或」卡，跨字段或组等其余片段整段原样保留。
+  // 整段被括号包裹的 && 链（如 ((A组) && B && C)）要先剥开包裹再按 && 分段，否则会整段落成原样卡
   function parseQueryToCards(q) {
     const cards = [];
     const byField = new Map();
     for (const part of splitTop(String(q || '').trim())) {
-      const alts = splitOrTop(stripWrapParens(part)).filter(Boolean);
-      if (!alts.length) continue;
-      if (alts.length === 1) {
-        const row = parseCondOne(alts[0]);
-        if (!row) { cards.push({ raw: part }); continue; }
-        const slim = { op: row.op, value: row.value };
-        if (!row.field) { cards.push({ field: '', join: '&&', rows: [slim] }); continue; }
-        const key = row.field.toLowerCase();
-        const c = byField.get(key);
-        if (c) c.rows.push(slim);
-        else {
-          const card = { field: row.field, join: '&&', rows: [slim] };
-          byField.set(key, card);
-          cards.push(card);
+      for (const seg of splitTop(stripWrapParens(part))) {
+        const alts = splitOrTop(stripWrapParens(seg)).filter(Boolean);
+        if (!alts.length) continue;
+        if (alts.length === 1) {
+          const row = parseCondOne(alts[0]);
+          if (!row) { cards.push({ raw: seg }); continue; }
+          const slim = { op: row.op, value: row.value };
+          if (!row.field) { cards.push({ field: '', join: '&&', rows: [slim] }); continue; }
+          const key = row.field.toLowerCase();
+          const c = byField.get(key);
+          if (c) c.rows.push(slim);
+          else {
+            const card = { field: row.field, join: '&&', rows: [slim] };
+            byField.set(key, card);
+            cards.push(card);
+          }
+          continue;
         }
-        continue;
-      }
-      const rows = alts.map((a) => parseCondOne(a));
-      if (rows.every((r) => r && r.field && r.field.toLowerCase() === rows[0].field.toLowerCase())) {
-        cards.push({ field: rows[0].field, join: '||', rows: rows.map((r) => ({ op: r.op, value: r.value })) });
-      } else {
-        cards.push({ raw: part });
+        const rows = alts.map((a) => parseCondOne(a));
+        if (rows.every((r) => r && r.field && r.field.toLowerCase() === rows[0].field.toLowerCase())) {
+          cards.push({ field: rows[0].field, join: '||', rows: rows.map((r) => ({ op: r.op, value: r.value })) });
+        } else {
+          cards.push({ raw: seg });
+        }
       }
     }
     return cards;
@@ -1902,7 +1905,8 @@
     }
   }
 
-  // 归一化一条知识库记录（纯函数）：字段转字符串、图片只保留 data:image/ 前缀；整条为空返回 null
+  // 归一化一条知识库记录（纯函数）：字段转字符串、图片只保留 data:image/ 前缀、
+  // order 为可选数字（同母厂组内的手动排序值，导入时保留）；整条为空返回 null
   function kbNormEntry(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const it = {
@@ -1914,6 +1918,7 @@
       images: Array.isArray(raw.images) ? raw.images.filter((s) => typeof s === 'string' && s.indexOf('data:image/') === 0) : [],
       ts: raw.ts == null ? '' : String(raw.ts)
     };
+    if (typeof raw.order === 'number' && Number.isFinite(raw.order)) it.order = raw.order;
     if (!it.parent && !it.name && !it.server && !it.title && !it.note && !it.images.length) return null;
     return it;
   }
@@ -1936,8 +1941,10 @@
     const kw = String(filter || '').trim().toLowerCase();
     const hit = (it) => !kw || [it.parent, it.name, it.server, it.title, it.note]
       .some((v) => String(v || '').toLowerCase().includes(kw));
+    // 母厂分组在前；组内先按手动 order（无则 0），再按名称兜底
     return loadKb().filter(hit)
       .sort((a, b) => String(a.parent || '').localeCompare(String(b.parent || ''), 'zh')
+        || (a.order || 0) - (b.order || 0)
         || String(a.name || '').localeCompare(String(b.name || ''), 'zh'));
   }
 
@@ -1951,7 +1958,7 @@
       <td class="fx-k-imgs" tabindex="0" title="点击聚焦后 Ctrl+V 粘贴产品截图">${(it.images || []).map((src, i) =>
         `<span class="fx-k-thumbwrap"><img class="fx-k-thumb" data-i="${i}" src="${src}" title="点击放大"><b class="fx-k-imgdel" data-i="${i}" title="删除此图">✕</b></span>`
       ).join('')}<b class="fx-k-addimg" title="选择图片文件">📎</b>${(it.images || []).length ? '' : '<span class="fx-k-hint">点击后 Ctrl+V 粘贴</span>'}</td>
-      <td class="fx-l-ops"><b class="fx-k-del" title="删除此条">✕</b></td></tr>`).join('');
+      <td class="fx-l-ops"><b class="fx-l-up fx-k-up" title="在同一母厂组内上移一位">↑</b><b class="fx-l-down fx-k-down" title="在同一母厂组内下移一位">↓</b><b class="fx-k-del" title="删除此条">✕</b></td></tr>`).join('');
     const cnt = pane.querySelector('.fx-l-count');
     if (cnt) cnt.textContent = `共 ${list.length} 条`;
     wrap.innerHTML = `<table class="fx-l-table">
@@ -2099,6 +2106,29 @@
     });
 
     pane.addEventListener('click', (e) => {
+      // ↑/↓：同一母厂组内手动排序。先把整组按当前展示顺序归一 order（0..n-1），再交换相邻两条
+      const mv = e.target.closest && e.target.closest('.fx-k-up,.fx-k-down');
+      if (mv) {
+        const arr = loadKb();
+        const it = arr.find((x) => String(x.id) === mv.closest('tr').dataset.id);
+        if (it) {
+          const group = arr.filter((x) => String(x.parent || '') === String(it.parent || ''))
+            .sort((a, b) => (a.order || 0) - (b.order || 0)
+              || String(a.name || '').localeCompare(String(b.name || ''), 'zh'));
+          group.forEach((g, i) => { g.order = i; });
+          const pos = group.indexOf(it);
+          const tgt = mv.classList.contains('fx-k-up') ? pos - 1 : pos + 1;
+          if (tgt >= 0 && tgt < group.length) {
+            const tmp = group[pos].order;
+            group[pos].order = group[tgt].order;
+            group[tgt].order = tmp;
+            if (saveKb(arr)) renderKb(pane);
+            return;
+          }
+        }
+        renderKb(pane);
+        return;
+      }
       const del = e.target.closest && e.target.closest('.fx-k-del');
       if (del) {
         saveKb(loadKb().filter((x) => String(x.id) !== del.closest('tr').dataset.id));

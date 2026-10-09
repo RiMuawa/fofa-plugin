@@ -227,6 +227,16 @@ eq('字段卡-关键词往返', cardsToQuery(parseQueryToCards('"busybox" && pro
 eq('字段卡-跨字段或组原样保留', cardsToQuery(parseQueryToCards('(app="A" && port="1") || title="x"')), '(app="A" && port="1") || title="x"');
 eq('字段卡-空语句', cardsToQuery(parseQueryToCards('')), '');
 
+// 整段被括号包裹的 && 链（用户示例：((country组) && after && is_cloud)，尾部还有空格）
+const wrappedQ = '((country="PK" || country="IN" || country="IR" || country="KZ" || country="UZ" || country="KG" || country="TJ" || country="TM" || country="AF" || country="PK") && after="2026-08-29" && is_cloud="false" )';
+const wrappedCards = parseQueryToCards(wrappedQ);
+eq('字段卡-包裹链拆成三卡', wrappedCards.length, 3);
+eq('字段卡-包裹链country是或卡', wrappedCards[0].join, '||');
+eq('字段卡-包裹链country行数', wrappedCards[0].rows.length, 10);
+eq('字段卡-包裹链往返', cardsToQuery(wrappedCards),
+  '(country="PK" || country="IN" || country="IR" || country="KZ" || country="UZ" || country="KG" || country="TJ" || country="TM" || country="AF" || country="PK") && after="2026-08-29" && is_cloud="false"');
+eq('字段卡-多层包裹单条件', cardsToQuery(parseQueryToCards('(((title="x"))) && port="80"')), 'title="x" && port="80"');
+
 // 预设并入：同字段同拼接方式的卡合并去重，异拼接另起新卡
 eq('预设并入-合并去重', JSON.stringify(mergeCards(
   [{ field: 'country', join: '||', rows: [{ op: '=', value: 'PK' }, { op: '=', value: 'IN' }] }],
@@ -244,6 +254,8 @@ eq('知识库-归一化字段', JSON.stringify(kbNormEntry({ parent: ' 大华 ',
 eq('知识库-空记录剔除', kbNormEntry({ images: [] }), null);
 eq('知识库-非对象剔除', kbNormEntry(null), null);
 eq('知识库-仅备注保留', kbNormEntry({ note: 'n' }).note, 'n');
+eq('知识库-order数字保留', kbNormEntry({ name: 'X', order: 3 }).order, 3);
+eq('知识库-order非法丢弃', 'order' in kbNormEntry({ name: 'X', order: 'abc' }), false);
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
