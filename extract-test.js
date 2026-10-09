@@ -66,6 +66,14 @@ eq('自引用-就地替换', curReal.replace(selfCondition(lqRouterReal, '路由
 eq('自引用-文本不匹配时放弃', selfCondition(lqRouterReal, '不存在的值'), null);
 eq('同区块其他条目-ADSL', extractNew(lqAdslReal, curReal), 'category="ADSL"');
 
+// ===== 链接语句与页面语句空格风格差异（组合链接用无空格 &&）=====
+eq('空格差异-段仍视为已存在', extractNew('title="x"&&port="80" && country="DE"', 'title="x" && port="80"'), 'country="DE"');
+eq('空格差异-无新增', extractNew('title="x"&&port="80"', 'title="x" && port="80"'), null);
+const condInQuery = eval('(0,' + grabFn('condInQuery').replace('function condInQuery', 'function') + ')');
+eq('条件存在-忽略空白', condInQuery('title="x" && port="80"', 'title="x"&&port="80"'), true);
+eq('条件存在-空白无关包含', condInQuery('app="A" && country="PK"', 'country="PK"'), true);
+eq('条件不存在', condInQuery('app="A" && port="80"', 'country="PK"'), false);
+
 // ===== 批量应用 applyBatch =====
 const applyBatch = eval('(0,' + grabFn('applyBatch').replace('function applyBatch', 'function') + ')');
 eq('批量排除-追加', applyBatch('title="web"', ['product="A"', 'country="US"'], 'exclude'),

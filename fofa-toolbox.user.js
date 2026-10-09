@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.12.4
+// @version      3.12.6
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.12.4';
+  const VER = '3.12.6';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -84,18 +84,27 @@
     if (!cur) return lq;
     if (lq === cur) return null;
     if (lq.startsWith(cur + ' && ')) return lq.slice(cur.length + 4).trim() || null;
+    const flat = (s) => String(s).replace(/\s+/g, ''); // 空格风格差异（&& 两边有无空格）不影响“已存在”判断
+    const curFlat = flat(cur);
+    const has = (s) => curFlat.includes(flat(s));
     const walk = (q) => {
       const extra = [];
       for (const s of splitTop(q)) {
-        if (cur.includes(s)) continue;
+        if (has(s)) continue;
         const inner = s.startsWith('(') && s.endsWith(')') ? s.slice(1, -1) : null;
-        if (inner !== null && cur.includes(norm(inner))) continue; // 只是加了层括号
+        if (inner !== null && has(inner)) continue; // 只是加了层括号
         if (inner !== null) { const r = walk(inner); if (r) return r; }   // 组内找新增
         extra.push(s);
       }
       return extra.length === 1 ? extra[0] : null;
     };
     return walk(lq);
+  }
+
+  // 语句是否已包含某条件（忽略空白差异），自引用判定用
+  function condInQuery(q, cond) {
+    const flat = (s) => String(s).replace(/\s+/g, '');
+    return flat(q || '').includes(flat(cond));
   }
 
   // 把语句拍平成叶子条件数组（递归剥括号）
@@ -317,10 +326,16 @@
         const cond = extractNew(lq, cur);
         // 取反失败（复杂条件/或组合）时原样显示真实条件供编辑，绝不猜测字段
         if (cond) return { cur, cond: negate(cond) || cond, include: cond };
-        // 自引用链接（无新增条件，如分类排名里当前选中的第一条）→ 就地取反
+        // 自引用链接（无新增条件，如分类排名里当前选中的第一条）→ 就地取反。
+        // 仅当 self 确实已存在于当前语句才算自引用；否则它是右键到的新条件
+        //（链接语句与页面语句格式有差异、extractNew 提取失败时会走到这里），
+        // 按普通新条件追加，绝不能给 replace——replace 落空等于什么都不做
         if (cur) {
           const self = selfCondition(lq, firstText(link));
-          if (self) return { cur, cond: negate(self) || self, include: self, replace: self };
+          if (self) {
+            const replace = condInQuery(cur, self) ? self : null;
+            return { cur, cond: negate(self) || self, include: self, replace };
+          }
         }
       }
     }
