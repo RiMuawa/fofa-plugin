@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.12.4
+// @version      3.12.5
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.12.4';
+  const VER = '3.12.5';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -659,10 +659,11 @@
     });
 
     const getCond = () => input.value.replace(/\s+/g, ' ').trim();
-    // 自引用条件（当前语句已含）：未编辑时就地替换该条件；否则追加
-    const compose = (cond) => {
+    // 自引用条件（当前语句已含）：排除且未编辑时就地取反替换（避免追加后自相矛盾）；
+    // 包含一律照常追加——就地替换对包含是把条件换成它自己，等于什么都没做
+    const compose = (cond, mode) => {
       if (!cand.cur) return cond;
-      if (cand.replace && !edited) return cand.cur.replace(cand.replace, cond);
+      if (mode === 'exclude' && cand.replace && !edited) return cand.cur.replace(cand.replace, cond);
       return `${cand.cur} && ${cond}`;
     };
     if (cand.replace) {
@@ -675,7 +676,7 @@
       if (!cond) { input.focus(); return; }
       // 包含：未编辑时用链接里的原始条件（保留 FOFA 的 == 精确匹配语义）
       const final = mode === 'include' ? (!edited && cand.include ? cand.include : ensurePos(cond)) : ensureNeg(cond);
-      openTab(compose(final));
+      openTab(compose(final, mode));
       hideMenu();
     };
 
@@ -730,7 +731,7 @@
     const panel = document.createElement('div');
     panel.id = 'fofa-toolbox-stage-panel';
     panel.innerHTML = `
-      <div class="fx-p-title">已暂存 ${arr.length} 个条件（排除时已存在于当前语句的会被就地取反）</div>
+      <div class="fx-p-title">已暂存 ${arr.length} 个条件</div>
       <div class="fx-p-list">${arr.map((c, i) =>
         `<div class="fx-p-item"><span title="${esc(c)}">${esc(c)}</span><b data-i="${i}" title="移除">×</b></div>`
       ).join('')}</div>
