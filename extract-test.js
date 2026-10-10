@@ -193,8 +193,9 @@ eq('导入合并-整行空白不计跳过', mergeImport([{ query: '', note: '' }
 // ===== 查询编辑器：语句 <-> 字段卡 =====
 const splitOrTop = eval('(0,' + grabFn('splitOrTop').replace('function splitOrTop', 'function') + ')');
 const stripWrapParens = eval('(0,' + grabFn('stripWrapParens').replace('function stripWrapParens', 'function') + ')');
+const balanceParens = eval('(0,' + grabFn('balanceParens').replace('function balanceParens', 'function') + ')');
 const parseCondOne = eval('(0,' + grabFn('parseCondOne').replace('function parseCondOne', 'function') + ')');
-const parseQueryToCards = eval('(function(){' + grabFn('splitTop') + '\n' + grabFn('splitOrTop') + '\n' + grabFn('stripWrapParens') + '\n' + grabFn('parseCondOne') + '\n' + grabFn('parseQueryToCards') + '\nreturn parseQueryToCards;})()');
+const parseQueryToCards = eval('(function(){' + grabFn('splitTop') + '\n' + grabFn('splitOrTop') + '\n' + grabFn('stripWrapParens') + '\n' + grabFn('balanceParens') + '\n' + grabFn('parseCondOne') + '\n' + grabFn('parseQueryToCards') + '\nreturn parseQueryToCards;})()');
 const cardsToQuery = eval('(function(){' + grabFn('cardRowQ') + '\n' + grabFn('cardsToQuery') + '\nreturn cardsToQuery;})()');
 const mergeCards = eval('(0,' + grabFn('mergeCards').replace('function mergeCards', 'function') + ')');
 
@@ -237,6 +238,107 @@ eq('字段卡-包裹链往返', cardsToQuery(wrappedCards),
   '(country="PK" || country="IN" || country="IR" || country="KZ" || country="UZ" || country="KG" || country="TJ" || country="TM" || country="AF" || country="PK") && after="2026-08-29" && is_cloud="false"');
 eq('字段卡-多层包裹单条件', cardsToQuery(parseQueryToCards('(((title="x"))) && port="80"')), 'title="x" && port="80"');
 
+// ===== 括号不配对容错（FOFA 生成的真实语句可能缺/多右括号，实测样例） =====
+eq('补括号-缺右括号补在末尾', balanceParens('((a="1" && b="2")'), '((a="1" && b="2"))');
+eq('补括号-缺两个', balanceParens('(((a="1"'), '(((a="1")))');
+eq('补括号-已配对不动', balanceParens('(a="1") && b="2"'), '(a="1") && b="2"');
+eq('补括号-引号内括号不计数', balanceParens('(title="a(b"'), '(title="a(b")');
+eq('补括号-多余右括号丢弃', balanceParens('a="1") && b="2"'), 'a="1" && b="2"');
+eq('补括号-引号内右括号不丢', balanceParens('title="a)b"'), 'title="a)b"');
+eq('容错-多余右括号不再整句塌缩', cardsToQuery(parseQueryToCards('(country="PK" || country="IN")) && title="x"')),
+  '(country="PK" || country="IN") && title="x"');
+
+// 用户报告的完整语句（原样粘贴）：多层括号包裹头部 + 排除链 + 分类定位
+const userOemQ = '(((country="PK" || country="IN" || country="IR" || country="KZ" || country="UZ" || country="KG" || country="TJ" || country="TM" || country="AF" || country="PK") && after="2026-08-29" && is_cloud="false")) && product!="AUTOMATTIC-WordPress" && product!="HUAWEI-Home-Gateway" && product!="CISCO-Switch" && product!="roundcube" && product!="cPanel-管理产品" && server!="CPE-SERVER/1.0 Supports only GET" && server!="nginx" && server!="LiteSpeed" && server!="CK6u06Vu4" && server!="Apache" && server!="Microsoft-IIS/10.0" && server!="WebServer/1.0 UPnP/1.0" && server!="gSOAP/2.7" && category="其他网络设备"';
+const userOemCards = parseQueryToCards(userOemQ);
+eq('容错-用户原句卡数', userOemCards.length, 6);
+eq('容错-用户原句country是或卡', userOemCards[0].join, '||');
+eq('容错-用户原句country行数', userOemCards[0].rows.length, 10);
+eq('容错-用户原句product排除并成一卡', (userOemCards.filter((c) => c.field === 'product')[0] || {}).rows.length, 5);
+eq('容错-用户原句server排除并成一卡', (userOemCards.filter((c) => c.field === 'server')[0] || {}).rows.length, 8);
+eq('容错-用户原句无原样卡', userOemCards.some((c) => c.raw != null), false);
+eq('容错-用户原句往返', cardsToQuery(userOemCards),
+  '(country="PK" || country="IN" || country="IR" || country="KZ" || country="UZ" || country="KG" || country="TJ" || country="TM" || country="AF" || country="PK") && after="2026-08-29" && is_cloud="false" && product!="AUTOMATTIC-WordPress" && product!="HUAWEI-Home-Gateway" && product!="CISCO-Switch" && product!="roundcube" && product!="cPanel-管理产品" && server!="CPE-SERVER/1.0 Supports only GET" && server!="nginx" && server!="LiteSpeed" && server!="CK6u06Vu4" && server!="Apache" && server!="Microsoft-IIS/10.0" && server!="WebServer/1.0 UPnP/1.0" && server!="gSOAP/2.7" && category="其他网络设备"');
+
+// 同一语句缺一个右括号（URL 里的真实形态）：此前整句塌缩成一张原样卡
+const userOemUnbal = '((((country="PK" || country="IN" || country="IR" || country="KZ" || country="UZ" || country="KG" || country="TJ" || country="TM" || country="AF" || country="PK") && after="2026-08-29" && is_cloud="false")) && product!="WordPress" && category="其他网络设备"';
+const unbalCards = parseQueryToCards(userOemUnbal);
+eq('容错-缺右括号不再整句塌缩', unbalCards.some((c) => c.raw != null), false);
+eq('容错-缺右括号拆出或卡', (unbalCards.filter((c) => c.field === 'country')[0] || {}).join, '||');
+
+// ===== 右键菜单：或包含（||）合成 =====
+const orCompose = eval('(function(){' + grabFn('parseCondOne') + '\n' + grabFn('splitTop') + '\n' + grabFn('splitOrTop') + '\n' + grabFn('stripWrapParens') + '\n' + grabFn('balanceParens') + '\n' + grabFn('parseQueryToCards') + '\n' + grabFn('cardRowQ') + '\n' + grabFn('cardsToQuery') + '\n' + grabFn('orCompose') + '\nreturn orCompose;})()');
+const orCur = '(country="IN" || country="IR" || country="KZ" || country="UZ" || country="KG" || country="TJ" || country="TM" || country="AF" || country="PK" || country="TR") && after="2026-09-10" && is_cloud="false"';
+eq('或包含-并入同字段或组（用户示例）', orCompose(orCur, 'country="AZ"'),
+  '(country="IN" || country="IR" || country="KZ" || country="UZ" || country="KG" || country="TJ" || country="TM" || country="AF" || country="PK" || country="TR" || country="AZ") && after="2026-09-10" && is_cloud="false"');
+eq('或包含-组内已有该值不重复添加', orCompose(orCur, 'country="PK"'), orCur);
+eq('或包含-保留==运算符', orCompose('(icon_hash=="1" || icon_hash=="2") && title="x"', 'icon_hash=="3"'),
+  '(icon_hash=="1" || icon_hash=="2" || icon_hash=="3") && title="x"');
+eq('或包含-整句即或组', orCompose('country="A" || country="B"', 'country="C"'), '(country="A" || country="B" || country="C")');
+eq('或包含-无同字段或组整句括起', orCompose('title="x" && port="80"', 'country="PK"'),
+  '(title="x" && port="80") || country="PK"');
+eq('或包含-跨字段或组不硬并', orCompose('(country="PK" || title="x") && after="2026-09-10"', 'country="IN"'),
+  '((country="PK" || title="x") && after="2026-09-10") || country="IN"');
+eq('或包含-裸词走整句括起', orCompose('title="x"', '"busybox"'), '(title="x") || "busybox"');
+eq('或包含-空语句直接返回条件', orCompose('', 'country="PK"'), 'country="PK"');
+eq('或包含-不可解析条件整句括起', orCompose('title="x"', '(a && b)'), '(title="x") || (a && b)');
+
+// ===== 语句框点击 <-> 卡片高亮：cardTextSpans 位置映射 =====
+const scanLeaves = eval('(function(){' + grabFn('balanceParens') + '\n' + grabFn('parseCondOne') + '\n' + grabFn('scanLeaves') + '\nreturn scanLeaves;})()');
+const cardTextSpans = eval('(function(){' + grabFn('balanceParens') + '\n' + grabFn('parseCondOne') + '\n' + grabFn('scanLeaves') + '\n' + grabFn('cardTextSpans') + '\nreturn cardTextSpans;})()');
+
+const spanQ = '(country="IN" || country="IR" || country="KZ") && after="2026-09-10" && is_cloud="false" && product!="WordPress" && product!="cPanel"';
+const spanCards = parseQueryToCards(spanQ);
+const spans = cardTextSpans(spanCards, spanQ);
+eq('定位-每张卡都有区间', spanCards.map((c, ci) => spans.spanOfCard(ci) != null), spanCards.map(() => true));
+eq('定位-或卡区间是整组', spanQ.slice(spans.spanOfCard(0).start, spans.spanOfCard(0).end), '(country="IN" || country="IR" || country="KZ")');
+eq('定位-排除卡区间并集', spanQ.slice(spans.spanOfCard(3).start, spans.spanOfCard(3).end), 'product!="WordPress" && product!="cPanel"');
+eq('定位-点击或组第二项', JSON.stringify(spans.leafAt(spanQ.indexOf('country="IR"'))), JSON.stringify({ ci: 0, ri: 1 }));
+eq('定位-点击is_cloud', JSON.stringify(spans.leafAt(spanQ.indexOf('is_cloud'))), JSON.stringify({ ci: 2, ri: 0 }));
+eq('定位-点击排除值', JSON.stringify(spans.leafAt(spanQ.indexOf('cPanel'))), JSON.stringify({ ci: 3, ri: 1 }));
+eq('定位-点击组首括号也命中', spans.leafAt(0) != null, true);
+eq('定位-点在连接符空隙为null', spans.leafAt(spanQ.indexOf('&& is_cloud')), null);
+// 大而真实的语句：所有卡/行都能定位（含原样片段的语句另行覆盖）
+const spanOem = cardTextSpans(userOemCards, userOemQ);
+eq('定位-用户原句全卡可定位', userOemCards.map((c, ci) => spanOem.spanOfCard(ci) != null), userOemCards.map(() => true));
+// 原样片段：跨字段或组是 raw 卡，点击其内部定位到该卡（ri=-1）
+const rawQ = '(app="A" || title="x") && port="80"';
+const rawCards = parseQueryToCards(rawQ);
+const rawSpans = cardTextSpans(rawCards, rawQ);
+eq('定位-原样卡区间', rawQ.slice(rawSpans.spanOfCard(0).start, rawSpans.spanOfCard(0).end), '(app="A" || title="x")');
+eq('定位-点击原样内部', JSON.stringify(rawSpans.leafAt(rawQ.indexOf('title="x"'))), JSON.stringify({ ci: 0, ri: -1 }));
+// 用户在语句框里手打的文本（未规范化）同样能定位
+const typedQ = '(country="PK"||country="IN")&&after="2026-09-01"';
+const typedSpans = cardTextSpans(parseQueryToCards(typedQ), typedQ);
+eq('定位-手打文本点击', JSON.stringify(typedSpans.leafAt(typedQ.indexOf('country="IN"'))), JSON.stringify({ ci: 0, ri: 1 }));
+
+// ===== 快速编辑：删除字段 =====
+const dropFieldQuery = eval('(function(){' + grabFn('splitTop') + '\n' + grabFn('splitOrTop') + '\n' + grabFn('stripWrapParens') + '\n' + grabFn('balanceParens') + '\n' + grabFn('parseCondOne') + '\n' + grabFn('parseQueryToCards') + '\n' + grabFn('cardRowQ') + '\n' + grabFn('cardsToQuery') + '\n' + grabFn('dropFieldQuery') + '\nreturn dropFieldQuery;})()');
+eq('删字段-或组整组删除', dropFieldQuery('(country="IN" || country="IR") && after="2026-09-10"', 'country'), 'after="2026-09-10"');
+eq('删字段-单条与排除都删', dropFieldQuery('country="CN" && title="x" && country!="US"', 'country'), 'title="x"');
+eq('删字段-其他字段不动', dropFieldQuery('title="x" && port="80"', 'country'), 'title="x" && port="80"');
+eq('删字段-原样片段保留', dropFieldQuery('(country="PK" || title="x") && port="80"', 'country'), '(country="PK" || title="x") && port="80"');
+eq('删字段-region不是country', dropFieldQuery('region="Xinjiang" && title="x"', 'country'), 'region="Xinjiang" && title="x"');
+
+// ===== 分组排序（指纹库文件夹 / 预设分组共用） =====
+const groupList = eval('(0,' + grabFn('groupList').replace('function groupList', 'function') + ')');
+eq('分组-空组排最后', groupList([{ g: 'B' }, { g: '' }, { g: 'A' }], (x) => x.g).map((x) => x.group), ['A', 'B', '']);
+eq('分组-组内保持原顺序', groupList([{ g: 'A', i: 1 }, { g: 'B', i: 2 }, { g: 'A', i: 3 }], (x) => x.g)[0].items.map((x) => x.i), [1, 3]);
+
+// ===== 预设导入合并 =====
+const mergePresets = eval('(0,' + grabFn('mergePresets').replace('function mergePresets', 'function') + ')');
+const mp = mergePresets([
+  { name: '地区', content: 'country="PK"', group: 'A' },
+  { name: '地区', content: 'country="PK"' },
+  { name: '', content: '' }
+], [{ id: 1, name: 'x', content: 'title="t"' }]);
+eq('预设导入-新增', mp.added, 1);
+eq('预设导入-重复与空跳过', mp.skipped, 2);
+eq('预设导入-分组保留', mp.list[1].group, 'A');
+const mp2 = mergePresets([{ name: 'n', content: 'c', id: 1 }], [{ id: 1, name: 'z', content: 'w' }]);
+eq('预设导入-id冲突重分配', mp2.list[1].id !== 1, true);
+eq('预设导入-空白差异不算重复', mergePresets([{ name: 'a', content: 'x="1"  && y="2"' }], [{ name: 'a', content: 'x="1" && y="2"' }]).skipped, 1);
+
 // 预设并入：同字段同拼接方式的卡合并去重，异拼接另起新卡
 eq('预设并入-合并去重', JSON.stringify(mergeCards(
   [{ field: 'country', join: '||', rows: [{ op: '=', value: 'PK' }, { op: '=', value: 'IN' }] }],
@@ -250,7 +352,7 @@ eq('预设并入-拼接不同另起卡', JSON.stringify(mergeCards(
 // ===== 知识库：记录归一化 =====
 const kbNormEntry = eval('(0,' + grabFn('kbNormEntry').replace('function kbNormEntry', 'function') + ')');
 eq('知识库-归一化字段', JSON.stringify(kbNormEntry({ parent: ' 大华 ', name: 'X', images: ['data:image/jpeg;base64,AAA', 'http://evil/x.png', 42] })),
-  JSON.stringify({ parent: '大华', name: 'X', server: '', title: '', note: '', images: ['data:image/jpeg;base64,AAA'], ts: '' }));
+  JSON.stringify({ parent: '大华', name: 'X', server: '', title: '', note: '', folder: '', images: ['data:image/jpeg;base64,AAA'], ts: '' }));
 eq('知识库-空记录剔除', kbNormEntry({ images: [] }), null);
 eq('知识库-非对象剔除', kbNormEntry(null), null);
 eq('知识库-仅备注保留', kbNormEntry({ note: 'n' }).note, 'n');
@@ -258,7 +360,7 @@ eq('知识库-order数字保留', kbNormEntry({ name: 'X', order: 3 }).order, 3)
 eq('知识库-order非法丢弃', 'order' in kbNormEntry({ name: 'X', order: 'abc' }), false);
 
 // ===== 指纹库语句去重瘦身 =====
-const dedupeQuery = eval('(function(){' + grabFn('splitTop') + '\n' + grabFn('splitOrTop') + '\n' + grabFn('stripWrapParens') + '\n' + grabFn('parseCondOne') + '\n' + grabFn('parseQueryToCards') + '\n' + grabFn('cardRowQ') + '\n' + grabFn('cardsToQuery') + '\n' + grabFn('dedupeQuery') + '\nreturn dedupeQuery;})()');
+const dedupeQuery = eval('(function(){' + grabFn('splitTop') + '\n' + grabFn('splitOrTop') + '\n' + grabFn('stripWrapParens') + '\n' + grabFn('balanceParens') + '\n' + grabFn('parseCondOne') + '\n' + grabFn('parseQueryToCards') + '\n' + grabFn('cardRowQ') + '\n' + grabFn('cardsToQuery') + '\n' + grabFn('dedupeQuery') + '\nreturn dedupeQuery;})()');
 const messyQ = '((country="PK" || country="IN" || country="IR" || country="KZ" || country="UZ" || country="KG" || country="TJ" || country="TM" || country="AF" || country="PK") && after="2026-08-29" && is_cloud="false" ) && category = "视频监控" && product!="AUTOMATTIC-WordPress" && product!="HIKVISION-视频监控" && product!="Dahua-NVR" && product!="FORTINET-防火墙" && product!="uniview-视频监控" && product!="视频监控" && product!="ZTE-公司产品" && product!="netis-ADSL-Modem-Router" && product="NOKIA-Fiber-ONT"';
 eq('去重-用户示例', dedupeQuery(messyQ),
   '(country="PK" || country="IN" || country="IR" || country="KZ" || country="UZ" || country="KG" || country="TJ" || country="TM" || country="AF" || country="PK") && after="2026-08-29" && is_cloud="false" && product="NOKIA-Fiber-ONT"');

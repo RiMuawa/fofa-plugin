@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      3.16.1
+// @version      4.1.0
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '3.16.1';
+  const VER = '4.1.0';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -65,7 +65,7 @@
       if (inStr) { buf += c; if (c === '"') inStr = false; continue; }
       if (c === '"') { inStr = true; buf += c; continue; }
       if (c === '(') { depth++; buf += c; continue; }
-      if (c === ')') { depth--; buf += c; continue; }
+      if (c === ')') { depth = depth > 0 ? depth - 1 : 0; buf += c; continue; } // 多余的右括号按深度 0 处理，避免深度转负后顶层 && 全部失灵
       if (depth === 0 && c === '&' && q[i + 1] === '&') { parts.push(buf.trim()); buf = ''; i++; continue; }
       buf += c;
     }
@@ -402,6 +402,18 @@
     return q;
   }
 
+  // 把一批（正条件形式的）暂存条件并入主查询编辑器：exclude 逐条取反、include 保持原样。
+  // 复用预设并入通道——拼成 && 链解析成卡后与编辑器现有卡自动合并去重（同字段集中一卡）
+  function editorAppend(conds, mode) {
+    const pieces = conds.map((c) => String(c).replace(/\s+/g, ' ').trim()).filter(Boolean)
+      .map((c) => (mode === 'exclude' ? ensureNeg(c) : c));
+    if (!pieces.length) return;
+    if (!document.getElementById('fofa-toolbox-box')) openToolbox(false, 'edit');
+    if (!editMain) return;
+    editMain.insertPreset(pieces.join(' && '));
+    importToast(mode === 'exclude' ? '✅ 已作为排除卡并入查询编辑器（可在编辑器里继续调整）' : '✅ 已并入查询编辑器（可在编辑器里继续调整）');
+  }
+
   function openTab(query) {
     const url = `${location.origin}/result?qbase64=${encodeURIComponent(b64enc(query))}`;
     if (openInCurrent()) { location.assign(url); return; }
@@ -456,7 +468,7 @@
       toolboxStyle = document.createElement('style');
       toolboxStyle.id = 'fofa-toolbox-style';
       toolboxStyle.textContent = `
-#fofa-toolbox-menu{position:fixed;z-index:2147483647;width:340px;box-sizing:border-box;background:#fff;color:#24292f;
+#fofa-toolbox-menu{position:fixed;z-index:2147483647;width:368px;box-sizing:border-box;background:#fff;color:#24292f;
   border:1px solid #d0d7de;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);padding:8px;
   font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
 #fofa-toolbox-menu .fx-cond{width:100%;box-sizing:border-box;background:#fff;border:1px solid #d0d7de;border-radius:6px;
@@ -468,7 +480,7 @@
 #fofa-toolbox-menu .fx-btns button:hover{background:#eef1f4}
 #fofa-toolbox-menu .fx-primary{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
 #fofa-toolbox-menu .fx-primary:hover{background:#ffab2e;border-color:#ffab2e}
-#fofa-toolbox-menu .fx-inc{flex:1}
+#fofa-toolbox-menu .fx-inc,#fofa-toolbox-menu .fx-or{flex:1}
 #fofa-toolbox-menu .fx-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;color:#8b949e;font-size:10px;margin-top:6px}
 #fofa-toolbox-menu .fx-curwin{display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none}
 #fofa-toolbox-menu .fx-curwin input{margin:0;accent-color:#f1961f}
@@ -487,7 +499,7 @@
   overflow:hidden;text-overflow:ellipsis}
 #fofa-toolbox-stage-panel .fx-p-item b{cursor:pointer;color:#8b949e;font-weight:400;padding:0 4px}
 #fofa-toolbox-stage-panel .fx-p-item b:hover{color:#e5484d}
-#fofa-toolbox-stage-panel .fx-p-btns{display:flex;gap:6px;margin-top:8px}
+#fofa-toolbox-stage-panel .fx-p-btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
 #fofa-toolbox-stage-panel .fx-p-btns button{border:1px solid #d0d7de;border-radius:6px;padding:5px 8px;cursor:pointer;
   font:12px/1.4 inherit;background:#f6f8fa;color:#24292f;white-space:nowrap}
 #fofa-toolbox-stage-panel .fx-p-btns button:hover{background:#eef1f4}
@@ -593,8 +605,11 @@
 #fofa-toolbox-box .fx-e-or{color:#b25e09;font-size:11px;padding:0 2px}
 #fofa-toolbox-box .fx-e-tag{color:#8b949e;font-size:10px;white-space:nowrap}
 #fofa-toolbox-box .fx-e-adds{display:flex;gap:6px;padding:6px 12px 0}
-#fofa-toolbox-box .fx-e-preview{margin:8px 12px 0;padding:6px 8px;background:#f6f8fa;border-radius:6px;color:#57606a;
-  font-family:Consolas,Menlo,monospace;font-size:11px;word-break:break-all;max-height:72px;overflow:auto}
+#fofa-toolbox-box .fx-e-qtext{margin:8px 12px 0;width:calc(100% - 24px);box-sizing:border-box;display:block;
+  min-height:52px;max-height:160px;resize:vertical;background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;
+  color:#57606a;padding:6px 8px;font:11px/1.5 Consolas,Menlo,monospace;word-break:break-all;outline:none}
+#fofa-toolbox-box .fx-e-qtext:focus{border-color:#f1961f;background:#fffdf5;color:#24292f}
+#fofa-toolbox-box .fx-e-qtext::placeholder{color:#b8c0c8}
 #fofa-toolbox-box .fx-e-actions{display:flex;gap:6px;padding:8px 12px}
 #fofa-toolbox-box .fx-e-actions .fx-e-search{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
 #fofa-toolbox-box .fx-e-actions .fx-e-search:hover{background:#ffab2e;border-color:#ffab2e}
@@ -621,9 +636,9 @@
 #fofa-toolbox-box .fx-t-resize{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;z-index:5;
   background:linear-gradient(135deg,transparent 0 46%,#c4cdd5 46% 54%,transparent 54% 66%,#c4cdd5 66% 74%,transparent 74% 86%,#c4cdd5 86% 94%,transparent 94%)}
 #fofa-toolbox-box .fx-t-resize:hover{background:linear-gradient(135deg,transparent 0 46%,#f1961f 46% 54%,transparent 54% 66%,#f1961f 66% 74%,transparent 74% 86%,#f1961f 86% 94%,transparent 94%)}
-#fofa-toolbox-box .fx-k-search{flex:1;min-width:170px;border:1px solid #d0d7de;border-radius:6px;padding:4px 8px;
-  font:12px/1.4 inherit;background:#fff;color:#24292f;outline:none}
-#fofa-toolbox-box .fx-k-search:focus{border-color:#f1961f}
+#fofa-toolbox-box .fx-k-search,#fofa-toolbox-box .fx-l-libsearch{flex:1;min-width:170px;border:1px solid #d0d7de;
+  border-radius:6px;padding:4px 8px;font:12px/1.4 inherit;background:#fff;color:#24292f;outline:none}
+#fofa-toolbox-box .fx-k-search:focus,#fofa-toolbox-box .fx-l-libsearch:focus{border-color:#f1961f}
 #fofa-toolbox-box td.fx-k-imgs{white-space:normal;min-width:150px}
 #fofa-toolbox-box td.fx-k-imgs:focus{outline:1.5px solid #f1961f;outline-offset:-1.5px}
 #fofa-toolbox-box .fx-k-thumbwrap{position:relative;display:inline-block;margin:1px}
@@ -637,7 +652,62 @@
 #fofa-toolbox-box .fx-k-hint{color:#b8c0c8;font-size:10px}
 #fofa-kb-lightbox{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.82);display:flex;
   align-items:center;justify-content:center;cursor:zoom-out}
-#fofa-kb-lightbox img{max-width:92vw;max-height:92vh;border-radius:4px;box-shadow:0 6px 40px rgba(0,0,0,.5)}`;
+#fofa-kb-lightbox img{max-width:92vw;max-height:92vh;border-radius:4px;box-shadow:0 6px 40px rgba(0,0,0,.5)}
+#fofa-toolbox-box .fx-l-ghead td,#fofa-preset-mgr .fx-l-ghead td{background:#f6f8fa;color:#57606a;font-weight:600;
+  padding:4px 8px;border-bottom:1px solid #eef1f4}
+#fofa-toolbox-box .fx-l-ghead td span,#fofa-preset-mgr .fx-l-ghead td span{color:#8b949e;font-weight:400;margin-left:6px}
+#fofa-toolbox-box .fx-e-group.fx-e-hl{border-color:#f1961f;box-shadow:0 0 0 1.5px rgba(241,150,31,.4)}
+#fofa-toolbox-box .fx-l-quickbox{display:flex;gap:6px;padding:6px 12px 0;flex-wrap:wrap}
+#fofa-toolbox-box .fx-l-quickbox button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
+  cursor:pointer;font:12px/1.4 inherit;color:#24292f;white-space:nowrap}
+#fofa-toolbox-box .fx-l-quickbox button:hover{background:#eef1f4}
+#fofa-toolbox-box .fx-l-ops b.fx-l-toedit:hover{color:#f1961f}
+#fofa-toolbox-box .fx-e-pmgr{margin-top:4px;border-top:1px dashed #eef1f4;padding-top:4px}
+#fofa-toolbox-box .fx-e-pmgr b{color:#57606a;cursor:pointer;font-weight:600}
+#fofa-toolbox-box .fx-e-pmgr b:hover{color:#f1961f}
+#fofa-preset-mgr{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483647;width:860px;
+  max-width:94vw;height:560px;max-height:84vh;display:flex;flex-direction:column;background:#fff;color:#24292f;
+  border:1px solid #d0d7de;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.22);overflow:hidden;
+  font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+#fofa-preset-mgr .fx-m-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #eef1f4}
+#fofa-preset-mgr .fx-m-title{font-weight:600;white-space:nowrap}
+#fofa-preset-mgr .fx-m-search{flex:1;min-width:170px;border:1px solid #d0d7de;border-radius:6px;padding:4px 8px;
+  font:12px/1.4 inherit;background:#fff;color:#24292f;outline:none}
+#fofa-preset-mgr .fx-m-search:focus{border-color:#f1961f}
+#fofa-preset-mgr .fx-l-hbtns button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
+  cursor:pointer;font:12px/1.4 inherit;color:#24292f}
+#fofa-preset-mgr .fx-l-hbtns button:hover{background:#eef1f4}
+#fofa-preset-mgr .fx-m-tools{display:flex;gap:6px;padding:8px 12px 0;align-items:center;flex-wrap:wrap}
+#fofa-preset-mgr .fx-l-count{color:#8b949e;font-size:11px}
+#fofa-preset-mgr .fx-m-tools button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
+  cursor:pointer;font:12px/1.4 inherit;color:#24292f;white-space:nowrap}
+#fofa-preset-mgr .fx-m-tools button:hover{background:#eef1f4}
+#fofa-preset-mgr .fx-m-tablewrap{flex:1;min-height:0;overflow:auto;margin-top:6px}
+#fofa-preset-mgr .fx-l-table{border-collapse:collapse;width:100%}
+#fofa-preset-mgr .fx-l-table th{position:sticky;top:0;background:#f6f8fa;color:#57606a;font-weight:600;text-align:left;
+  padding:6px 8px;border-bottom:1px solid #eef1f4;white-space:nowrap}
+#fofa-preset-mgr .fx-l-table td{padding:5px 8px;border-bottom:1px solid #f0f2f5;vertical-align:top;word-break:break-all}
+#fofa-preset-mgr .fx-l-table td[contenteditable]:focus{outline:1.5px solid #f1961f;outline-offset:-1.5px;background:#fffdf5}
+#fofa-preset-mgr .fx-l-mono{font-family:Consolas,Menlo,monospace;font-size:11px}
+#fofa-preset-mgr .fx-l-ops b{cursor:pointer;color:#8b949e;font-weight:400;margin-right:6px}
+#fofa-preset-mgr .fx-l-ops b:hover{color:#f1961f}
+#fofa-preset-mgr .fx-l-ops b.fx-m-pdel:hover{color:#e5484d}
+#fofa-preset-mgr .fx-l-ops b.fx-m-pins,#fofa-preset-mgr .fx-l-ops b.fx-m-povr{color:#b25e09}
+#fofa-preset-mgr td.fx-rowdrag{cursor:grab;color:#c4cdd5;text-align:center;user-select:none;font-size:13px}
+#fofa-preset-mgr td.fx-rowdrag:active{cursor:grabbing;color:#f1961f}
+#fofa-preset-mgr tr.fx-dragging td{opacity:.45}
+#fofa-preset-mgr tr.fx-drop-above td{border-top:2px solid #f1961f}
+#fofa-preset-mgr tr.fx-drop-below td{border-bottom:2px solid #f1961f}
+#fofa-preset-mgr .fx-l-empty{color:#8b949e;text-align:center;padding:24px}
+#fofa-preset-mgr .fx-l-foot{padding:6px 12px;color:#8b949e;font-size:11px;border-top:1px solid #eef1f4}
+#fofa-preset-mgr tr.fx-m-peditor td{background:#fffdf5;padding:0 6px 6px}
+#fofa-preset-mgr .fx-e-cards{max-height:190px;overflow:auto}
+#fofa-preset-mgr .fx-e-qtext{min-height:40px;max-height:110px}
+#fofa-preset-mgr .fx-e-pactions{display:flex;gap:6px;padding:6px 12px 8px}
+#fofa-preset-mgr .fx-e-pactions button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
+  cursor:pointer;font:12px/1.4 inherit;color:#24292f;white-space:nowrap}
+#fofa-preset-mgr .fx-e-pactions .fx-e-psave2{background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
+#fofa-preset-mgr .fx-e-pactions .fx-e-psave2:hover{background:#ffab2e;border-color:#ffab2e}`;
       (document.head || document.documentElement).appendChild(toolboxStyle);
     }
   }
@@ -653,6 +723,20 @@
     if (menu) { menu.remove(); menu = null; }
   }
 
+  /* 或包含（||）合成：基于字段卡解析（解析器以函数声明定义在编辑器一节，调用时有提升）。
+     当前语句里有同字段的「或组」时，把条件并进该组（重新合成后自然落在括号内、
+     与其他同类条件并列，已存在则不重复添加）；没有可并的或组、或条件不可解析时，
+     把当前语句整体括起来再或，保证 || 不因优先级被 && 吞掉 */
+  function orCompose(cur, cond) {
+    const row = parseCondOne(cond);
+    const cards = parseQueryToCards(cur || '');
+    const tgt = row && row.field
+      && cards.find((c) => c.raw == null && c.field.toLowerCase() === row.field.toLowerCase() && c.join === '||');
+    if (!tgt) return cur ? `(${cur}) || ${cond}` : cond;
+    if (!tgt.rows.some((r) => r.op === row.op && r.value === row.value)) tgt.rows.push({ op: row.op, value: row.value });
+    return cardsToQuery(cards);
+  }
+
   function showMenu(x, y, cand) {
     hideMenu();
     injectStyle();
@@ -663,7 +747,8 @@
       <input class="fx-cond" spellcheck="false" placeholder='例如 product="HIKVISION-视频监控" 或 icon_hash="-1940193079"'>
       <div class="fx-btns">
         <button class="fx-primary" title="将该条件取反后追加到当前语句，并在新标签页打开">🚫 排除并打开</button>
-        <button class="fx-inc" title="将该条件追加到当前语句，并在新标签页打开">➕ 包含</button>
+        <button class="fx-inc" title="将该条件以 且(&amp;&amp;) 追加到当前语句，并在新标签页打开">➕ 且包含</button>
+        <button class="fx-or" title="将该条件以 或(||) 并入当前语句：优先并入语句里同字段的或组（括号内，与其他同类条件并列），没有可并的或组时把当前语句整体括起来再或">➕ 或包含</button>
       </div>
       <div class="fx-foot">
         <label class="fx-curwin" title="勾选后在当前标签页内跳转，不再新开标签"><input type="checkbox">在本页打开</label>
@@ -687,6 +772,7 @@
     const compose = (cond, mode) => {
       if (!cand.cur) return cond;
       if (mode === 'exclude' && cand.replace && !edited) return cand.cur.replace(cand.replace, cond);
+      if (mode === 'or') return orCompose(cand.cur, cond);
       return `${cand.cur} && ${cond}`;
     };
     if (cand.replace) {
@@ -698,16 +784,18 @@
     const doOpen = (mode) => {
       const cond = getCond();
       if (!cond) { input.focus(); return; }
-      // 包含：未编辑时用链接里的原始条件（保留 FOFA 的 == 精确匹配语义）
-      const final = mode === 'include' ? (!edited && cand.include ? cand.include : ensurePos(cond)) : ensureNeg(cond);
+      // 包含（且/或）：未编辑时用链接里的原始条件（保留 FOFA 的 == 精确匹配语义）
+      const final = mode === 'exclude' ? ensureNeg(cond) : (!edited && cand.include ? cand.include : ensurePos(cond));
       const q = compose(final, mode);
-      console.info(`[FOFA工具箱] v${VER} ${mode === 'include' ? '包含' : '排除'} -> ${q}`);
+      const label = mode === 'exclude' ? '排除' : (mode === 'or' ? '或包含' : '且包含');
+      console.info(`[FOFA工具箱] v${VER} ${label} -> ${q}`);
       openTab(q);
       hideMenu();
     };
 
     menu.querySelector('.fx-primary').addEventListener('click', () => doOpen('exclude'));
     menu.querySelector('.fx-inc').addEventListener('click', () => doOpen('include'));
+    menu.querySelector('.fx-or').addEventListener('click', () => doOpen('or'));
     input.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') { ev.preventDefault(); doOpen('exclude'); }
     });
@@ -739,7 +827,7 @@
     if (!bar) {
       bar = document.createElement('div');
       bar.id = 'fofa-toolbox-stage-bar';
-      bar.title = '已暂存的条件，点击批量排除/包含';
+      bar.title = '已暂存的条件，点击批量排除/包含（也可并入查询编辑器）';
       bar.addEventListener('click', (e) => {
         e.stopPropagation();
         const p = document.getElementById('fofa-toolbox-stage-panel');
@@ -757,13 +845,15 @@
     const panel = document.createElement('div');
     panel.id = 'fofa-toolbox-stage-panel';
     panel.innerHTML = `
-      <div class="fx-p-title">已暂存 ${arr.length} 个条件（排除时已存在于当前语句的会被就地取反）</div>
+      <div class="fx-p-title">已暂存 ${arr.length} 个条件（排除时已存在于当前语句的会被就地取反；也可并入查询编辑器继续编辑）</div>
       <div class="fx-p-list">${arr.map((c, i) =>
         `<div class="fx-p-item"><span title="${esc(c)}">${esc(c)}</span><b data-i="${i}" title="移除">×</b></div>`
       ).join('')}</div>
       <div class="fx-p-btns">
         <button class="fx-p-primary" title="把全部暂存条件取反后并入当前语句并打开">🚫 全部排除并打开</button>
         <button class="fx-p-inc" title="把全部暂存条件并入当前语句并打开">➕ 全部包含</button>
+        <button class="fx-p-eexclude" title="把全部暂存条件取反后作为字段卡并入查询编辑器：同字段自动集中一卡、去重；工具箱没开会自动打开，不新开标签">✏️ 排除到编辑器</button>
+        <button class="fx-p-einclude" title="把全部暂存条件作为字段卡并入查询编辑器：同字段自动集中一卡、去重；工具箱没开会自动打开，不新开标签">✏️ 包含到编辑器</button>
         <button class="fx-p-clear" title="清空暂存">清空</button>
       </div>`;
 
@@ -784,8 +874,18 @@
         hideStagePanel();
         if (q) openTab(q);
       };
+      // 并入查询编辑器：消耗暂存（同排除/包含并打开的语义），不新开标签
+      const toEditor = (mode) => {
+        const conds = loadStaged();
+        editorAppend(conds, mode);
+        saveStaged([]);
+        ensureStagedBar();
+        hideStagePanel();
+      };
       if (e.target.closest('.fx-p-primary')) apply('exclude');
       else if (e.target.closest('.fx-p-inc')) apply('include');
+      else if (e.target.closest('.fx-p-eexclude')) toEditor('exclude');
+      else if (e.target.closest('.fx-p-einclude')) toEditor('include');
       else if (e.target.closest('.fx-p-clear')) { saveStaged([]); ensureStagedBar(); }
     });
 
@@ -815,7 +915,8 @@
     { key: 'after', label: '收录时间', w: '80px' },
     { key: 'vendor', label: '厂商', w: '60px' },
     { key: 'model', label: '型号', w: '60px' },
-    { key: 'note', label: '备注', w: '80px' }
+    { key: 'note', label: '备注', w: '80px' },
+    { key: 'folder', label: '文件夹', w: '70px' }
   ];
 
   function loadLib() {
@@ -903,7 +1004,7 @@
       title: (grabRankingEntries('网站标题')[0] || {}).name || '',
       // 收录时间直接记录收藏当天的系统日期
       after: fmtDate(new Date()),
-      vendor: '', model: '', note: '',
+      vendor: '', model: '', note: '', folder: '',
       ts: new Date().toLocaleString()
     };
     return entry;
@@ -1099,8 +1200,9 @@
       box.querySelector('.fx-t-tab-' + t).classList.toggle('on', tab === t);
       box.querySelector('.fx-t-pane-' + t).classList.toggle('on', tab === t);
     }
-    // 页面语句变了（如搜索后跳转/新标签返回）就重读，未变则保留用户当前编辑
-    if (tab === 'edit' && currentQuery() !== editLastParsed) parseEditorFromPage();
+    // 自动跟随模式下页面语句变了（如搜索后跳转）才重读；显式载入过内容
+    //（指纹 / 预设覆盖 / 空白查询）就不再自动重读，想拉页面语句点「↻ 使用当前查询语句」
+    if (tab === 'edit' && editMain && editMain.pageChanged()) editMain.parseFromPage();
   }
 
   /* ---------- 内置日期语法 ----------
@@ -1193,29 +1295,59 @@
     });
   }
 
+  // 搜索过滤（与知识库一致）：按全部列内容匹配，置顶条目仍优先
+  function libFiltered(filter) {
+    const kw = String(filter || '').trim().toLowerCase();
+    const hit = (it) => !kw || LIB_FIELDS.some((f) => String(it[f.key] || '').toLowerCase().includes(kw));
+    return loadLib().filter(hit).slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
+  }
+
   function renderLib(pane) {
     const arr = loadLib();
-    // 用户置顶的条目排在前面（sort 稳定，保持原有顺序）
-    const sorted = arr.slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
-    const rows = sorted.map((it) => `<tr data-id="${it.id}"${it.pin ? ' class="fx-l-userpin"' : ''}><td class="fx-rowdrag" draggable="true" title="拖动调整顺序（置顶条目仍优先）">⠿</td>${LIB_FIELDS.map((f) =>
-      `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
-    ).join('')}<td class="fx-l-ops"><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-dedup" title="语句去重瘦身：同字段只保留最后一条定位条件、丢弃中间排除与冗余分类；可撤销">🧹</b>${libRowUndo.has(String(it.id)) ? '<b class="fx-l-undorow" title="撤销本行去重，恢复原语句（会覆盖其后对此语句的修改）">↩</b>' : ''}<b class="fx-l-del" title="删除此条">✕</b></td></tr>`).join('');
-    // 只负责渲染内容；事件在 openToolbox 里对 pane 挂一次（委托，重渲染不影响）
-    pane.innerHTML = `
+    // 工具栏（含搜索框、快速编辑下拉）只建一次：输入搜索词时仅重绘表格区，输入框焦点不丢。
+    // 事件在 openToolbox 里对 pane 挂一次（委托，重渲染不影响）
+    if (!pane.querySelector('.fx-l-tablewrap')) {
+      pane.innerHTML = `
       <div class="fx-l-tools">
-        <span class="fx-l-count">共 ${arr.length} 条</span>
+        <input class="fx-l-libsearch" placeholder="搜索：名称 / 语句 / 产品 / 类型 / 国家 / 厂商 / 文件夹…" spellcheck="false" title="按任意列内容实时过滤（置顶条目仍优先）">
+        <span class="fx-l-count"></span>
         <button class="fx-l-add" title="新建条目：结果页会自动填写当前语句与排名信息，否则为空白">＋ 新建</button>
+        <button class="fx-l-quickbtn" title="批量整理全库语句（每个操作都可「↩ 撤销」）">⚡ 快速编辑</button>
         <button class="fx-l-expj" title="导出为 JSON 文件">导出 JSON</button>
         <button class="fx-l-expc" title="导出为 CSV 文件（Excel 可直接打开）">导出 CSV</button>
         <button class="fx-l-imp" title="从本脚本导出的 JSON/CSV 文件导入（Excel 另存的 GBK 编码 CSV 也能识别）：按搜索语句去重，已存在的自动跳过">导入</button>
-        <button class="fx-l-dedupall" title="对所有条目的语句执行去重瘦身：同字段只保留最后一条定位条件、丢弃中间排除与冗余分类；完成后可撤销">🧹 全库去重</button>
-        <button class="fx-l-undo"${libUndoSnap ? '' : ' style="display:none"'} title="恢复最近一次全库去重前的完整备份（会覆盖其后的修改）">↩ 撤销全库去重</button>
+        <button class="fx-l-undo" style="display:none" title="恢复最近一次快速编辑（全库去重/删除地区等）前的完整备份（会覆盖其后的修改）">↩ 撤销</button>
       </div>
-      <div class="fx-l-tablewrap"><table class="fx-l-table">
+      <div class="fx-l-quickbox" style="display:none">
+        <button data-op="dedup" title="对所有条目的语句执行去重瘦身：同字段只保留最后一条定位条件、丢弃中间排除与冗余分类；完成后可「↩ 撤销」">🧹 全库去重</button>
+        <button data-op="dropcountry" title="去掉每条语句里全部 country 条件（或组/单条/排除都删，其他字段与原样片段不动）；完成后可「↩ 撤销」">🌏 删除地区</button>
+      </div>
+      <div class="fx-l-tablewrap"></div>
+      <div class="fx-l-foot">搜索框实时过滤（任意列内容匹配） · 「文件夹」列分一类（一层，不嵌套；空=未分组） · 单元格点击即可编辑，失焦自动保存 · 📌 置顶 · ✏️ 发送到查询编辑器 · 🔍 搜索（after 内 YESTERDAY=昨天 / LastMonth=一月前） · 数据保存在浏览器本地（localStorage）</div>`;
+      const si = pane.querySelector('.fx-l-libsearch');
+      if (si && pane.dataset.filter) si.value = pane.dataset.filter;
+    }
+    const kw = String(pane.dataset.filter || '').trim();
+    // 文件夹分组（一层）；组内置顶优先，其余保持存储顺序（sort 稳定）
+    const sorted = libFiltered(pane.dataset.filter);
+    const groups = groupList(sorted, (it) => it.folder);
+    const showHeads = groups.length > 1 || groups.some((g) => g.group);
+    const rowOf = (it) => `<tr data-id="${it.id}"${it.pin ? ' class="fx-l-userpin"' : ''}><td class="fx-rowdrag" draggable="true" title="拖动调整顺序（同文件夹、同置顶状态内）">⠿</td>${LIB_FIELDS.map((f) =>
+      `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
+    ).join('')}<td class="fx-l-ops"><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-toedit" title="把此语句发送到查询编辑器继续编辑（编辑器将脱离页面语句跟随）">✏️</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-dedup" title="语句去重瘦身：同字段只保留最后一条定位条件、丢弃中间排除与冗余分类；可撤销">🧹</b>${libRowUndo.has(String(it.id)) ? '<b class="fx-l-undorow" title="撤销本行去重，恢复原语句（会覆盖其后对此语句的修改）">↩</b>' : ''}<b class="fx-l-del" title="删除此条">✕</b></td></tr>`;
+    let rows = '';
+    for (const g of groups) {
+      if (showHeads) rows += `<tr class="fx-l-ghead"><td colspan="${LIB_FIELDS.length + 2}">📁 ${esc(g.group || '未分组')}<span>${g.items.length}</span></td></tr>`;
+      rows += g.items.map(rowOf).join('');
+    }
+    pane.querySelector('.fx-l-tablewrap').innerHTML = `<table class="fx-l-table">
         <thead><tr><th style="width:26px"></th>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="${LIB_FIELDS.length + 2}" class="fx-l-empty">暂无收藏条目：点「＋ 新建」即可收藏当前语句（结果页自动填写），或手动添加</td></tr>`}</tbody>
-      </table></div>
-      <div class="fx-l-foot">单元格点击即可编辑，失焦自动保存 · 📌 置顶 · 🔍 搜索（after 内 YESTERDAY=昨天 / LastMonth=一月前） · 📅 after 改为一月前搜索 · 数据保存在浏览器本地（localStorage）</div>`;
+        <tbody>${rows || `<tr><td colspan="${LIB_FIELDS.length + 2}" class="fx-l-empty">${kw ? `没有匹配的条目：换个关键词，或清空搜索框显示全部 ${arr.length} 条` : '暂无收藏条目：点「＋ 新建」即可收藏当前语句（结果页自动填写），或手动添加'}</td></tr>`}</tbody>
+      </table>`;
+    const cnt = pane.querySelector('.fx-l-count');
+    if (cnt) cnt.textContent = kw ? `共 ${arr.length} 条，匹配 ${sorted.length} 条` : `共 ${arr.length} 条`;
+    const ub = pane.querySelector('.fx-l-undo');
+    if (ub) ub.style.display = libUndoSnap ? '' : 'none';
   }
 
   // 事件只在 openToolbox 时对 pane 挂一次。绝不能放进 renderLib：
@@ -1233,13 +1365,21 @@
       saveLib(arr2);
     });
 
-    // 拖动排序：同一置顶状态内移动（跨边界不允许，否则稳定排序会把它弹回去）
+    // 搜索框实时过滤（只重绘表格区，输入框不动，焦点不丢）
+    pane.addEventListener('input', (e) => {
+      const si = e.target.closest && e.target.closest('.fx-l-libsearch');
+      if (!si) return;
+      pane.dataset.filter = si.value;
+      renderLib(pane);
+    });
+
+    // 拖动排序：同一文件夹、同一置顶状态内移动（跨边界不允许，否则稳定排序会把它弹回去）
     attachRowDrag(pane,
       (a, b) => {
         const arr2 = loadLib();
         const A = arr2.find((x) => String(x.id) === a);
         const B = arr2.find((x) => String(x.id) === b);
-        return !!(A && B && (A.pin ? 1 : 0) === (B.pin ? 1 : 0));
+        return !!(A && B && (A.pin ? 1 : 0) === (B.pin ? 1 : 0) && String(A.folder || '') === String(B.folder || ''));
       },
       (id, targetId, before) => {
         const arr2 = loadLib();
@@ -1293,21 +1433,29 @@
         importToast('↩ 已恢复本行去重前的语句');
         return;
       }
-      // 🧹 全库去重
-      if (e.target.closest('.fx-l-dedupall')) {
-        const arr2 = loadLib();
-        const snap = JSON.parse(JSON.stringify(arr2)); // 修改前拍快照
-        let changed = 0;
-        for (const it of arr2) {
-          if (!it.query) continue;
-          const before = String(it.query).trim();
-          const q2 = dedupeQuery(before);
-          if (q2 !== before) { it.query = q2; changed++; }
-        }
-        libUndoSnap = changed ? snap : null;
-        saveLib(arr2);
-        renderLib(pane);
-        importToast(changed ? `✅ 全库去重完成：<b>${changed}</b> 条语句被简化，失误可点「↩ 撤销全库去重」` : '全库没有可去重的内容');
+      // ⚡ 快速编辑：展开/收起操作下拉；点某个操作就对全库逐条套用（共用 ↩ 整库撤销）
+      if (e.target.closest('.fx-l-quickbtn')) {
+        const qb = pane.querySelector('.fx-l-quickbox');
+        if (qb) qb.style.display = qb.style.display === 'none' ? '' : 'none';
+        return;
+      }
+      const qop = e.target.closest && e.target.closest('.fx-l-quickbox button[data-op]');
+      if (qop) {
+        const op = LIB_QUICK_OPS[qop.dataset.op];
+        const qb = pane.querySelector('.fx-l-quickbox');
+        if (qb) qb.style.display = 'none';
+        if (op) libApplyQueryOp(pane, op.fn, op.label);
+        return;
+      }
+      // ✏️：把此语句发送到查询编辑器继续编辑（编辑器脱离页面语句跟随）
+      const toedit = e.target.closest && e.target.closest('.fx-l-toedit');
+      if (toedit) {
+        const it2 = loadLib().find((x) => String(x.id) === toedit.closest('tr').dataset.id);
+        if (it2 && it2.query && editMain) {
+          editMain.loadQuery(it2.query);
+          switchTab('edit');
+          importToast('✅ 已载入查询编辑器（不再跟随页面语句，「↻ 使用当前查询语句」可切回）');
+        } else if (!it2 || !it2.query) importToast('⚠️ 此条没有搜索语句');
         return;
       }
       // ↩ 撤销去重
@@ -1345,17 +1493,19 @@
       if (e.target.closest('.fx-l-add')) {
         const arr2 = loadLib();
         // 结果页上自动填写当前语句与排名信息；无当前语句（如首页）则为空白条目
-        const entry = captureFingerprint();
-        if (entry) arr2.unshift(entry);
-        else {
+        const entry = captureFingerprint() || (() => {
           const blank = { id: Date.now(), ts: new Date().toLocaleString() };
           for (const f of LIB_FIELDS) blank[f.key] = '';
-          arr2.unshift(blank);
-        }
+          return blank;
+        })();
+        arr2.unshift(entry);
         saveLib(arr2);
+        const si = pane.querySelector('.fx-l-libsearch'); // 清掉过滤，保证新行可见
+        if (si) { si.value = ''; pane.dataset.filter = ''; }
         renderLib(pane);
-        const first = pane.querySelector('tbody td[contenteditable]');
-        if (first) { first.focus(); }
+        // 置顶条目仍排在最前：按 id 定位新行聚焦，而不是表格第一行
+        const cell = pane.querySelector(`tbody tr[data-id="${entry.id}"] td[contenteditable]`);
+        if (cell) { cell.focus(); cell.scrollIntoView({ block: 'nearest' }); }
         return;
       }
       if (e.target.closest('.fx-l-expj')) { doExport('json'); return; }
@@ -1469,7 +1619,7 @@
       for (const f of LIB_FIELDS) it[f.key] = raw[f.key] == null ? '' : String(raw[f.key]).trim();
       it.ts = raw.ts == null ? '' : String(raw.ts).trim();
       it.pin = raw.pin === true;
-      if (!LIB_FIELDS.some((f) => it[f.key])) continue; // 整行空白
+      if (!LIB_FIELDS.some((f) => f.key !== 'folder' && it[f.key])) continue; // 整行空白（仅文件夹不算内容）
       const k = key(it.query);
       if (!k || seen.has(k)) { skipped++; continue; }
       let id = Number(raw.id);
@@ -1543,7 +1693,7 @@
     try {
       const arr = JSON.parse(localStorage.getItem(LIB_KEY) || '[]');
       if (!Array.isArray(arr)) return;
-      const meaningful = arr.filter((it) => it && LIB_FIELDS.some((f) => String(it[f.key] || '').trim() !== ''));
+      const meaningful = arr.filter((it) => it && LIB_FIELDS.some((f) => f.key !== 'folder' && String(it[f.key] || '').trim() !== ''));
       if (meaningful.length !== arr.length) localStorage.setItem(LIB_KEY, JSON.stringify(meaningful));
     } catch (e) { /* ignore */ }
   })();
@@ -1590,7 +1740,7 @@
       if (inStr) { buf += c; if (c === '"') inStr = false; continue; }
       if (c === '"') { inStr = true; buf += c; continue; }
       if (c === '(') { depth++; buf += c; continue; }
-      if (c === ')') { depth--; buf += c; continue; }
+      if (c === ')') { depth = depth > 0 ? depth - 1 : 0; buf += c; continue; }
       if (depth === 0 && c === '|' && q[i + 1] === '|') { parts.push(buf.trim()); buf = ''; i++; continue; }
       buf += c;
     }
@@ -1608,12 +1758,29 @@
         if (inStr) { if (c === '"') inStr = false; continue; }
         if (c === '"') { inStr = true; continue; }
         if (c === '(') depth++;
-        else if (c === ')') { depth--; if (depth === 0 && i < s.length - 1) { wraps = false; break; } }
+        else if (c === ')') { if (depth > 0) depth--; if (depth === 0 && i < s.length - 1) { wraps = false; break; } }
       }
       if (!wraps || depth !== 0) break;
       s = s.slice(1, -1).trim();
     }
     return s;
+  }
+
+  // 括号配平：FOFA 生成的语句可能括号不配对（如整段开头多一层 ( 而缺对应的 )，实测样例），
+  // 缺的右括号会让顶层 && 永远切不开、整句落成原样卡。缺失的右括号补在末尾
+  // （等于把尾部条件并入最外层组，&& 链语义不变）；多余的右括号没有对应左括号，直接丢弃。
+  // 引号内的括号不参与计数、也不会被丢弃。
+  function balanceParens(q) {
+    let out = '', inStr = false, opens = 0;
+    for (let i = 0; i < q.length; i++) {
+      const c = q[i];
+      if (inStr) { out += c; if (c === '"') inStr = false; continue; }
+      if (c === '"') { inStr = true; out += c; continue; }
+      if (c === '(') { opens++; out += c; continue; }
+      if (c === ')') { if (opens > 0) { opens--; out += c; } continue; } // 无对应左括号的右括号丢弃
+      out += c;
+    }
+    return out + ')'.repeat(opens);
   }
 
   // 单个条件 -> 行对象；裸关键词 -> field 为空；识别不了 -> null（由调用方落为原样卡）
@@ -1630,36 +1797,54 @@
 
   // 语句 -> 字段卡数组：顶层按 && 分段后，同字段的零散单行并成一张「且」卡（保持首见位置），
   // 纯同字段的或组成为一张「或」卡，跨字段或组等其余片段整段原样保留。
-  // 整段被括号包裹的 && 链（如 ((A组) && B && C)）要先剥开包裹再按 && 分段，否则会整段落成原样卡
+  // 整段被括号包裹的 && 链（如 ((A组) && B && C)）要先剥开包裹再按 && 分段，否则会整段落成原样卡；
+  // 括号不配对的语句先经 balanceParens 补全。包裹剥不干净的段（如 (A && B) && C 中的 (A && B)）
+  // 识别不了时递归再按 && 切一层
   function parseQueryToCards(q) {
     const cards = [];
     const byField = new Map();
-    for (const part of splitTop(String(q || '').trim())) {
-      for (const seg of splitTop(stripWrapParens(part))) {
-        const alts = splitOrTop(stripWrapParens(seg)).filter(Boolean);
-        if (!alts.length) continue;
-        if (alts.length === 1) {
-          const row = parseCondOne(alts[0]);
-          if (!row) { cards.push({ raw: seg }); continue; }
-          const slim = { op: row.op, value: row.value };
-          if (!row.field) { cards.push({ field: '', join: '&&', rows: [slim] }); continue; }
-          const key = row.field.toLowerCase();
-          const c = byField.get(key);
-          if (c) c.rows.push(slim);
-          else {
-            const card = { field: row.field, join: '&&', rows: [slim] };
-            byField.set(key, card);
-            cards.push(card);
-          }
-          continue;
-        }
-        const rows = alts.map((a) => parseCondOne(a));
-        if (rows.every((r) => r && r.field && r.field.toLowerCase() === rows[0].field.toLowerCase())) {
-          cards.push({ field: rows[0].field, join: '||', rows: rows.map((r) => ({ op: r.op, value: r.value })) });
-        } else {
+    const addSeg = (seg) => {
+      const alts = splitOrTop(stripWrapParens(seg)).filter(Boolean);
+      if (!alts.length) return;
+      if (alts.length === 1) {
+        const row = parseCondOne(alts[0]);
+        if (!row) {
+          const subs = splitTop(stripWrapParens(seg));
+          if (subs.length > 1) { subs.forEach(addSeg); return; } // 括号包裹的 && 链：递归再切
           cards.push({ raw: seg });
+          return;
         }
+        const slim = { op: row.op, value: row.value };
+        if (!row.field) { cards.push({ field: '', join: '&&', rows: [slim] }); return; }
+        const key = row.field.toLowerCase();
+        const c = byField.get(key);
+        if (c) c.rows.push(slim);
+        else {
+          const card = { field: row.field, join: '&&', rows: [slim] };
+          byField.set(key, card);
+          cards.push(card);
+        }
+        return;
       }
+      const rows = alts.map((a) => parseCondOne(a));
+      if (rows.every((r) => r && r.field && r.field.toLowerCase() === rows[0].field.toLowerCase())) {
+        cards.push({ field: rows[0].field, join: '||', rows: rows.map((r) => ({ op: r.op, value: r.value })) });
+      } else {
+        cards.push({ raw: seg });
+      }
+    };
+    for (const part of splitTop(balanceParens(String(q || '').trim()))) {
+      const peeled = stripWrapParens(part);
+      const segs = splitTop(peeled);
+      segs.forEach((seg) => {
+        const n0 = cards.length;
+        addSeg(seg);
+        // 剥壳后整个 part 就是一张原样卡时，用带括号的原 part：
+        // 跨字段或组如 (a="1" || b="2") 的括号承载优先级，丢了会变义
+        if (peeled !== part && segs.length === 1 && cards.length === n0 + 1 && cards[n0].raw != null) {
+          cards[n0].raw = part;
+        }
+      });
     }
     return cards;
   }
@@ -1723,6 +1908,34 @@
     return cardsToQuery(out);
   }
 
+  // 删除指定字段的全部条件（纯函数，基于字段卡）：或组整组删、单条/排除行删，原样片段与其他字段不动
+  function dropFieldQuery(q, field) {
+    const f = String(field).toLowerCase();
+    return cardsToQuery(parseQueryToCards(q).filter((c) => c.raw != null || c.field.toLowerCase() !== f));
+  }
+
+  // 快速编辑操作集（指纹库「⚡ 快速编辑」下拉）：对全库逐条套用纯函数，共用 ↩ 整库撤销
+  const LIB_QUICK_OPS = {
+    dedup: { label: '全库去重', fn: dedupeQuery },
+    dropcountry: { label: '删除地区', fn: (q) => dropFieldQuery(q, 'country') }
+  };
+
+  function libApplyQueryOp(pane, fn, label) {
+    const arr = loadLib();
+    const snap = JSON.parse(JSON.stringify(arr));
+    let changed = 0;
+    for (const it of arr) {
+      if (!it.query) continue;
+      const before = String(it.query).trim();
+      const q2 = fn(before);
+      if (q2 !== before) { it.query = q2; changed++; }
+    }
+    libUndoSnap = changed ? snap : null;
+    saveLib(arr);
+    renderLib(pane);
+    importToast(changed ? `✅ ${label}完成：<b>${changed}</b> 条语句被修改，失误可点「↩ 撤销」` : `${label}：全库没有可修改的内容`);
+  }
+
   // 预设并入（可单测）：同字段同拼接方式的卡合并行并去重，其余追加为新卡
   function mergeCards(dest, incoming) {
     const out = dest.slice();
@@ -1746,147 +1959,187 @@
     catch (e) { return false; }
   }
 
-  let editCards = [];      // 字段卡数组：{field, join, rows:[{op,value}]} 或 {raw}
-  let editFocus = null;    // {ci, ri} 最近聚焦的卡/行（卡头元素 ri 为 -1）
-  let editLastParsed = null; // 上次读取时的页面语句（变了才重读，保留用户编辑）
+  let editMain = null; // 主编辑器实例（工具箱「查询编辑器」标签页；「管理预设」里另有内嵌实例）
+  let editorSeq = 0;   // 编辑器实例序号：datalist 等 id 去重用
 
-  function parseEditorFromPage() {
-    editLastParsed = currentQuery();
-    editCards = parseQueryToCards(editLastParsed);
-    editFocus = null;
-    const box = document.getElementById('fofa-toolbox-box');
-    if (box) { renderEditorCards(box); updateEditorState(box); }
-  }
-
-  function renderEditorCards(scope) {
-    const wrap = scope.querySelector('.fx-e-cards');
-    if (!wrap) return;
-    if (!editCards.length) {
-      wrap.innerHTML = '<div class="fx-e-empty">（无条件）：点上方快速开关 / 预设，或 Alt+A 添加字段卡</div>';
-      return;
-    }
-    let html = '';
-    editCards.forEach((c, ci) => {
-      if (c.raw != null) {
-        html += `<div class="fx-e-group" data-ci="${ci}">
-          <div class="fx-e-chead"><span class="fx-e-tag">原样片段</span><span class="fx-e-cops"><b class="fx-e-cdel" title="删除此卡">✕</b></span></div>
-          <div class="fx-e-row"><input class="raw" data-ci="${ci}" data-ri="0" data-f="raw" value="${esc(c.raw)}" spellcheck="false"></div>
-        </div>`;
+  /* 语句文本 -> 叶子条件区间扫描（联动定位用）：拆分规则与 parseQueryToCards 完全一致
+     （配平括号 -> 顶层 && -> 剥包裹 -> 顶层 && -> 剥包裹 -> 顶层 || -> 剥包裹 -> 叶子），
+     但带着原文区间走。每个叶子是一条可解析的单条件（含裸关键词），或一个识别不了的
+     原样片段（raw），返回其在原文中的 {start,end}。 */
+  function scanLeaves(q) {
+    const leaves = [];
+    const text = balanceParens(String(q || ''));
+    const isWs = (c) => /\s/.test(c);
+    const trim = (lo, hi) => { while (lo < hi && isWs(text[lo])) lo++; while (hi > lo && isWs(text[hi - 1])) hi--; return [lo, hi]; };
+    // 剥掉整段包裹括号（区间版，与 stripWrapParens 同规则：引号内不算、中途闭合不剥）
+    const peel = (lo0, hi0) => {
+      let lo = lo0, hi = hi0;
+      for (;;) {
+        [lo, hi] = trim(lo, hi);
+        if (text[lo] !== '(' || text[hi - 1] !== ')') break;
+        let depth = 0, inStr = false, wraps = true;
+        for (let i = lo; i < hi; i++) {
+          const c = text[i];
+          if (inStr) { if (c === '"') inStr = false; continue; }
+          if (c === '"') { inStr = true; continue; }
+          if (c === '(') depth++;
+          else if (c === ')') { if (depth > 0) depth--; if (depth === 0 && i < hi - 1) { wraps = false; break; } }
+        }
+        if (!wraps || depth !== 0) break;
+        lo++; hi--;
+      }
+      return [lo, hi];
+    };
+    // 顶层按 && / || 切分（区间版，与 splitTop/splitOrTop 同规则，多余的右括号深度钳制在 0）
+    const splitAt = (lo0, hi0, sep) => {
+      let lo = lo0, hi = hi0;
+      [lo, hi] = trim(lo, hi);
+      const parts = [];
+      let depth = 0, inStr = false, start = lo;
+      for (let i = lo; i < hi; i++) {
+        const c = text[i];
+        if (inStr) { if (c === '"') inStr = false; continue; }
+        if (c === '"') { inStr = true; continue; }
+        if (c === '(') { depth++; continue; }
+        if (c === ')') { if (depth > 0) depth--; continue; }
+        if (depth === 0 && c === sep && text[i + 1] === sep) {
+          parts.push(trim(start, i));
+          i++; start = i + 1;
+        }
+      }
+      parts.push(trim(start, hi));
+      return parts.filter((p) => p[0] < p[1]); // 对应 splitTop 的空段过滤
+    };
+    const pushLeaf = (lo, hi) => {
+      const row = parseCondOne(text.slice(lo, hi));
+      if (row) leaves.push({ start: lo, end: hi, field: row.field, op: row.op, value: row.value });
+      else leaves.push({ start: lo, end: hi, raw: true });
+    };
+    // 与 parseQueryToCards 的 addSeg 逐步同构：1 alt=单条件或包裹链递归；多 alt=同字段或组或原样。
+    // ov 为可选的外层 part 范围（含包裹括号）：叶子可扩到括号上（点击括号也能定位），
+    // 原样片段区间与解析器保下的带括号原文一致
+    const walkSeg = (lo0, hi0, ov) => {
+      const [plo, phi] = peel(lo0, hi0);
+      const alts = splitAt(plo, phi, '|');
+      if (!alts.length) return;
+      const [tlo, thi] = ov ? [ov[0], ov[1]] : trim(lo0, hi0);
+      if (alts.length === 1) {
+        pushLeaf(alts[0][0], alts[0][1]);
+        const lf = leaves[leaves.length - 1];
+        if (lf && !lf.raw) {
+          lf.start = Math.min(lf.start, tlo);
+          lf.end = Math.max(lf.end, thi);
+          return;
+        }
+        leaves.pop(); // 单条件解析失败：先按 && 再切一层（包裹链递归），仍失败才落原样
+        const subs = splitAt(plo, phi, '&');
+        if (subs.length > 1) { subs.forEach((s) => walkSeg(s[0], s[1])); return; }
+        leaves.push({ start: tlo, end: thi, raw: true });
         return;
       }
-      const or = c.join === '||' && (c.rows || []).length > 1;
-      html += `<div class="fx-e-group${or ? ' or' : ''}" data-ci="${ci}">
-        <div class="fx-e-chead">
-          <input class="fx-e-cfld" list="fofa-edit-fields" data-ci="${ci}" data-f="field" value="${esc(c.field)}" placeholder="字段（留空=关键词）" spellcheck="false" title="字段名，如 country / product / icon_hash">
-          <select class="fx-e-cjoin" data-ci="${ci}" data-f="join" title="卡内多值如何拼接">
-            <option value="&&"${c.join === '&&' ? ' selected' : ''}>且 &&</option>
-            <option value="||"${c.join === '||' ? ' selected' : ''}>或 ||</option>
-          </select>
-          <span class="fx-e-tag">${or ? '( 或卡自动加括号 )' : ((c.rows || []).length + ' 值')}</span>
-          <span class="fx-e-cops"><b class="fx-e-cadd" title="在本卡追加一个值（Alt+O）">＋值</b><b class="fx-e-cdel" title="删除整卡">✕</b></span>
-        </div>`;
-      (c.rows || []).forEach((r, ri) => {
-        const conn = ri === 0 ? '' : (c.join === '||' ? '<span class="fx-e-or">‖ 或</span>' : '<span class="fx-e-rowand">且 &&</span>');
-        html += `<div class="fx-e-row">${conn}
-          <select data-ci="${ci}" data-ri="${ri}" data-f="op" title="运算符">
-            <option value="="${r.op === '=' ? ' selected' : ''}>模糊 =</option>
-            <option value="=="${r.op === '==' ? ' selected' : ''}>精确 ==</option>
-            <option value="!="${r.op === '!=' ? ' selected' : ''}>排除 !=</option>
-          </select>
-          <input class="val" data-ci="${ci}" data-ri="${ri}" data-f="value" value="${esc(r.value)}" spellcheck="false" placeholder="值">
-          <b class="fx-e-rdel" data-ci="${ci}" data-ri="${ri}" title="删除此值">✕</b>
-        </div>`;
+      const rows = alts.map((a) => parseCondOne(text.slice(a[0], a[1])));
+      if (rows.every((r) => r && r.field && r.field.toLowerCase() === rows[0].field.toLowerCase())) {
+        alts.forEach((a, i) => leaves.push({ start: a[0], end: a[1], field: rows[i].field, op: rows[i].op, value: rows[i].value }));
+        const f0 = leaves[leaves.length - alts.length];
+        const l0 = leaves[leaves.length - 1];
+        f0.start = Math.min(f0.start, tlo); // 只把首项起点、末项终点向外扩到段边界（含括号）
+        l0.end = Math.max(l0.end, thi);
+      } else {
+        leaves.push({ start: tlo, end: thi, raw: true });
+      }
+    };
+    splitAt(0, text.length, '&').forEach((sp) => {
+      const [plo, phi] = peel(sp[0], sp[1]);
+      const segs = splitAt(plo, phi, '&');
+      const [ptlo, pthi] = trim(sp[0], sp[1]);
+      const hadWrap = ptlo !== plo || pthi !== phi; // 这个 part 剥过包裹括号
+      segs.forEach((t) => {
+        const n0 = leaves.length;
+        // 单一段时把段范围（含括号）传下去
+        walkSeg(t[0], t[1], (hadWrap && segs.length === 1) ? [ptlo, pthi] : null);
+        // 与解析器一致：剥壳后整段落成原样片段时，区间用整段（含括号）
+        if (hadWrap && segs.length === 1 && leaves.length === n0 + 1 && leaves[n0].raw) {
+          leaves[n0].start = ptlo;
+          leaves[n0].end = pthi;
+        }
       });
-      html += '</div>';
     });
-    wrap.innerHTML = html;
+    return leaves;
   }
 
-  function renderPresetList(scope) {
-    const list = scope.querySelector('.fx-e-plist');
-    if (!list) return;
-    const arr = loadPresets();
-    list.innerHTML = arr.length ? arr.map((p) => `
-      <div class="fx-e-pitem" data-id="${p.id}">
-        <span class="fx-e-pn" title="${esc(p.name)}">${esc(p.name)}</span>
-        <span class="fx-e-pc" title="点击插入：${esc(p.content)}">${esc(p.content)}</span>
-        <b class="fx-e-pins" title="并入编辑器（同字段同拼接的卡自动合并去重）">插入</b>
-        <b class="fx-e-pdel" title="删除此预设">✕</b>
-      </div>`).join('') : '<div class="fx-e-pempty">暂无预设：输入名称后「💾 存为预设」——保存焦点卡（无焦点卡时保存整条语句）</div>';
-    const btn = scope.querySelector('.fx-e-pbtn');
-    if (btn) btn.textContent = `📦 预设 (${arr.length})`;
-  }
-
-  function updateEditorState(scope) {
-    const q = cardsToQuery(editCards);
-    const prev = scope.querySelector('.fx-e-preview');
-    if (prev) prev.textContent = q || '（空语句）';
-    const hasField = (name) => editCards.some((c) => c.raw == null && c.field.toLowerCase() === name);
-    const mb = scope.querySelector('.fx-e-qmonth');
-    if (mb) mb.classList.toggle('on', hasField('after'));
-    const cb = scope.querySelector('.fx-e-qcloud');
-    if (cb) cb.classList.toggle('on', hasField('is_cloud') || hasField('is_cloude'));
-    const sb = scope.querySelector('.fx-e-search');
-    if (sb) { sb.disabled = !q; sb.style.opacity = q ? '' : '.5'; }
-  }
-
-  // 快速开关：再点一次移除；云服务行兼容 is_cloud / is_cloude 两种写法
-  function toggleQuick(kind) {
-    const isIt = (c) => c.raw == null && (kind === 'month'
-      ? c.field.toLowerCase() === 'after'
-      : (c.field.toLowerCase() === 'is_cloud' || c.field.toLowerCase() === 'is_cloude'));
-    if (editCards.some(isIt)) editCards = editCards.filter((c) => !isIt(c));
-    else if (kind === 'month') editCards.push({ field: 'after', join: '&&', rows: [{ op: '=', value: monthAgoOf(new Date()) }] });
-    else editCards.push({ field: 'is_cloud', join: '&&', rows: [{ op: '=', value: 'false' }] });
-    editFocus = null;
-    const box = document.getElementById('fofa-toolbox-box');
-    if (box) { renderEditorCards(box); updateEditorState(box); }
-  }
-
-  function focusEditorCell(scope, ci, ri, which) {
-    const el = scope.querySelector(`[data-ci="${ci}"][data-ri="${ri}"][data-f="${which}"]`);
-    if (el) el.focus();
-  }
-
-  // Alt+A 新增字段卡；Alt+O 在焦点卡（无则末卡）追加值，继承焦点行/末行运算符
-  function addEditorItem(kind) {
-    const pane = document.querySelector('#fofa-toolbox-box .fx-t-pane-edit');
-    if (!pane) return;
-    if (kind === 'row' && editCards.length) {
-      const fc = editFocus && editCards[editFocus.ci];
-      const ci = fc ? editFocus.ci : editCards.length - 1;
-      const card = editCards[ci];
-      if (card && card.raw == null) {
-        const ref = (editFocus && editFocus.ri >= 0 && card.rows[editFocus.ri]) || card.rows[card.rows.length - 1];
-        const row = { op: ref ? ref.op : '=', value: '' };
-        card.rows.push(row);
-        renderEditorCards(pane); updateEditorState(pane);
-        focusEditorCell(pane, ci, card.rows.length - 1, 'value');
+  /* 卡片 <-> 语句文本位置映射：叶子按「同字段文本出现顺序 = 卡内行序」配对（解析器按
+     遇到顺序收集同字段行，两侧顺序天然一致），原样片段按出现顺序配对原样卡。
+     leafAt(offset)：光标落在哪个条件上 -> {ci,ri}（原样卡 ri 为 -1，空隙返回 null）；
+     spanOfCard(ci)：该卡在文本中的区间（卡内各行区间的并集，或原样片段区间）。 */
+  function cardTextSpans(cards, q) {
+    const leaves = scanLeaves(q);
+    const seen = new Map();
+    for (const lf of leaves) {
+      if (lf.raw) continue;
+      const k = (lf.field || '').toLowerCase();
+      lf.seq = seen.get(k) || 0;
+      seen.set(k, lf.seq + 1);
+    }
+    const cardSpan = [];
+    const rowSeq = new Map();
+    let rawIdx = 0;
+    const rawLeaves = leaves.filter((l) => l.raw);
+    (cards || []).forEach((c, ci) => {
+      if (c.raw != null) {
+        const lf = rawLeaves[rawIdx++];
+        if (lf) { lf.ci = ci; lf.ri = -1; cardSpan[ci] = { start: lf.start, end: lf.end }; }
         return;
       }
-    }
-    const card = { field: '', join: '&&', rows: [{ op: '=', value: '' }] };
-    let ci = editCards.length;
-    if (editFocus && editCards[editFocus.ci]) ci = editFocus.ci + 1; // 插到焦点卡之后
-    editCards.splice(ci, 0, card);
-    renderEditorCards(pane); updateEditorState(pane);
-    const fld = pane.querySelector(`.fx-e-cfld[data-ci="${ci}"]`);
-    if (fld) fld.focus();
+      let un = null;
+      (c.rows || []).forEach((r, ri) => {
+        const k = c.field.toLowerCase();
+        const seq = rowSeq.get(k) || 0;
+        rowSeq.set(k, seq + 1);
+        const lf = leaves.find((l) => !l.raw && (l.field || '').toLowerCase() === k && l.seq === seq);
+        if (!lf) return;
+        lf.ci = ci; lf.ri = ri;
+        un = un ? { start: Math.min(un.start, lf.start), end: Math.max(un.end, lf.end) } : { start: lf.start, end: lf.end };
+      });
+      if (un) cardSpan[ci] = un;
+    });
+    return {
+      leafAt: (off) => {
+        for (const lf of leaves) {
+          if (lf.ci !== undefined && lf.start <= off && off < lf.end) return { ci: lf.ci, ri: lf.ri };
+        }
+        return null;
+      },
+      spanOfCard: (ci) => cardSpan[ci] || null
+    };
   }
 
-  function buildEditor(pane) {
-    pane.innerHTML = `
-      <datalist id="fofa-edit-fields">${EDITOR_FIELDS.map((f) => `<option value="${f}"></option>`).join('')}</datalist>
+  // 编辑器骨架（主编辑器与「管理预设」的内嵌编辑共用；sfx 让 datalist 的 id 不重复）
+  function editorShellHtml(sfx, preset) {
+    const datalist = `<datalist id="fofa-edit-fields${sfx}">${EDITOR_FIELDS.map((f) => `<option value="${f}"></option>`).join('')}</datalist>`;
+    if (preset) return `${datalist}
+      <div class="fx-e-cards"></div>
+      <div class="fx-e-adds">
+        <button class="fx-e-andb" title="新增一张字段卡">＋ 字段卡</button>
+        <button class="fx-e-orb" title="在焦点卡追加一个值，继承运算符">＋ 值</button>
+      </div>
+      <textarea class="fx-e-qtext" spellcheck="false" title="预设搜索串（可直接编辑）：改动实时解析成上方字段卡；卡片侧的改动也实时回写到这里。括号不配对会自动补全" placeholder="预设搜索串（可直接编辑，与上方卡片实时互通）"></textarea>
+      <div class="fx-e-pactions">
+        <button class="fx-e-psave2" title="把当前内容写回该预设的搜索串">💾 保存到预设</button>
+        <button class="fx-e-ccollapse" title="收起编辑（未保存的改动会丢弃）">收起</button>
+      </div>`;
+    return `${datalist}
       <div class="fx-e-quick">
         <button class="fx-e-qmonth" title="切换 after=一月内条件（再点一次移除，月末钳制）">📅 一个月内</button>
         <button class="fx-e-qcloud" title="切换 is_cloud=&quot;false&quot; 排除云服务（兼容识别 is_cloude 写法；再点一次移除）">☁️ 排除云服务</button>
-        <button class="fx-e-reload" title="放弃当前编辑，重新读取页面语句">↻ 重读语句</button>
-        <button class="fx-e-pbtn" title="展开/收起预设面板">📦 预设</button>
+        <button class="fx-e-reload" title="读入当前页面的查询语句（编辑器已有内容会先询问），之后恢复自动跟随页面语句">↻ 使用当前查询语句</button>
+        <button class="fx-e-blank" title="清空编辑器从零组装（已有内容会先询问）；此后不再自动跟随页面语句">📄 新建空白查询</button>
+        <button class="fx-e-savefp" title="把当前语句存入指纹库（自动填名称/产品/收录时间）">🗂 存为指纹</button>
+        <button class="fx-e-pbtn" title="展开/收起预设快插列表">📦 预设</button>
       </div>
       <div class="fx-e-pbox" style="display:none">
         <div class="fx-e-prow">
           <input class="fx-e-pname" placeholder="预设名称，如：地区-中亚" spellcheck="false">
-          <button class="fx-e-psave" title="保存焦点卡为预设（无焦点卡时保存整条语句）">💾 存为预设</button>
+          <button class="fx-e-psave" title="保存为预设：焦点行存单条条件，焦点卡存整卡，无焦点存整条语句">💾 存为预设</button>
         </div>
         <div class="fx-e-plist"></div>
       </div>
@@ -1895,135 +2148,622 @@
         <button class="fx-e-andb" title="新增一张字段卡（Alt+A）">＋ 字段卡 Alt+A</button>
         <button class="fx-e-orb" title="在焦点卡追加一个值，继承运算符（Alt+O）">＋ 值 Alt+O</button>
       </div>
-      <div class="fx-e-preview"></div>
+      <textarea class="fx-e-qtext" spellcheck="false" title="查询语句（可直接编辑）：改动实时解析成上方字段卡；卡片侧的改动也会实时回写到这里。括号不配对会自动补全。单击语句中的条件可定位上方对应卡片" placeholder="查询语句（可直接编辑，与上方卡片实时互通）——回车搜索，Shift+回车换行"></textarea>
       <div class="fx-e-actions">
-        <button class="fx-e-search" title="按预览语句发起查询（编辑器内回车同）">🔍 搜索</button>
-        <button class="fx-e-copy" title="复制预览语句">📋 复制</button>
+        <button class="fx-e-search" title="按当前语句发起查询（编辑器内回车同）">🔍 搜索</button>
+        <button class="fx-e-copy" title="复制当前语句">📋 复制</button>
       </div>
-      <div class="fx-e-hint">按字段分卡编辑：同字段的值集中在一张卡，卡内选 且(&&)/或(||)，或卡自动加括号 · 预设可把常用片段一键并入 · 回车搜索 · Alt+Q 开关工具箱</div>`;
-    renderPresetList(pane);
+      <div class="fx-e-hint">按字段分卡编辑：同字段的值集中在一张卡，卡内选 且(&&)/或(||)，或卡自动加括号 · 语句框可直接编辑并与卡片实时互通（括号自动配平）；单击语句中的条件可定位上方卡片，聚焦卡片会在语句框选中其文本 · 预设可快插/管理 · 回车搜索 · Alt+Q 开关工具箱</div>`;
+  }
 
-    // 预设面板：开关 / 保存 / 插入 / 删除
+  /* 查询编辑器工厂：一份完整的卡片编辑器。卡片数组、焦点（卡/行）、上次页面语句、
+     「已显式载入」标记、高亮卡全部是实例私有状态——工具箱主编辑器与「管理预设」里
+     内嵌的预设编辑互不干扰。 */
+  function createEditor(pane, sfx) {
+    const st = { cards: [], focus: null, lastParsed: null, loaded: false, hlCi: null };
+    const qtext = pane.querySelector('.fx-e-qtext');
+    const cardsEl = pane.querySelector('.fx-e-cards');
+    const dl = 'fofa-edit-fields' + sfx;
+
+    function renderCards() {
+      if (!cardsEl) return;
+      if (!st.cards.length) {
+        cardsEl.innerHTML = '<div class="fx-e-empty">（无条件）：直接在下方语句框输入，或点上方快速开关 / 预设，或 Alt+A 添加字段卡</div>';
+        applyHl(st.hlCi);
+        return;
+      }
+      let html = '';
+      st.cards.forEach((c, ci) => {
+        if (c.raw != null) {
+          html += `<div class="fx-e-group" data-ci="${ci}">
+            <div class="fx-e-chead"><span class="fx-e-tag">原样片段</span><span class="fx-e-cops"><b class="fx-e-cdel" title="删除此卡">✕</b></span></div>
+            <div class="fx-e-row"><input class="raw" data-ci="${ci}" data-ri="0" data-f="raw" value="${esc(c.raw)}" spellcheck="false"></div>
+          </div>`;
+          return;
+        }
+        const or = c.join === '||' && (c.rows || []).length > 1;
+        html += `<div class="fx-e-group${or ? ' or' : ''}" data-ci="${ci}">
+          <div class="fx-e-chead">
+            <input class="fx-e-cfld" list="${dl}" data-ci="${ci}" data-f="field" value="${esc(c.field)}" placeholder="字段（留空=关键词）" spellcheck="false" title="字段名，如 country / product / icon_hash">
+            <select class="fx-e-cjoin" data-ci="${ci}" data-f="join" title="卡内多值如何拼接">
+              <option value="&&"${c.join === '&&' ? ' selected' : ''}>且 &&</option>
+              <option value="||"${c.join === '||' ? ' selected' : ''}>或 ||</option>
+            </select>
+            <span class="fx-e-tag">${or ? '( 或卡自动加括号 )' : ((c.rows || []).length + ' 值')}</span>
+            <span class="fx-e-cops"><b class="fx-e-cadd" title="在本卡追加一个值（Alt+O）">＋值</b><b class="fx-e-cdel" title="删除整卡">✕</b></span>
+          </div>`;
+        (c.rows || []).forEach((r, ri) => {
+          const conn = ri === 0 ? '' : (c.join === '||' ? '<span class="fx-e-or">‖ 或</span>' : '<span class="fx-e-rowand">且 &&</span>');
+          html += `<div class="fx-e-row">${conn}
+            <select data-ci="${ci}" data-ri="${ri}" data-f="op" title="运算符">
+              <option value="="${r.op === '=' ? ' selected' : ''}>模糊 =</option>
+              <option value="=="${r.op === '==' ? ' selected' : ''}>精确 ==</option>
+              <option value="!="${r.op === '!=' ? ' selected' : ''}>排除 !=</option>
+            </select>
+            <input class="val" data-ci="${ci}" data-ri="${ri}" data-f="value" value="${esc(r.value)}" spellcheck="false" placeholder="值">
+            <b class="fx-e-rdel" data-ci="${ci}" data-ri="${ri}" title="删除此值">✕</b>
+          </div>`;
+        });
+        html += '</div>';
+      });
+      cardsEl.innerHTML = html;
+      applyHl(st.hlCi);
+    }
+
+    function updateState(fromText) {
+      const q = cardsToQuery(st.cards);
+      // 语句框不是本次变更的来源时才回写，避免在语句框里打字的过程中被合成语句覆盖
+      if (qtext && !fromText && qtext.value !== q) qtext.value = q;
+      const hasField = (name) => st.cards.some((c) => c.raw == null && c.field.toLowerCase() === name);
+      const mb = pane.querySelector('.fx-e-qmonth');
+      if (mb) mb.classList.toggle('on', hasField('after'));
+      const cb = pane.querySelector('.fx-e-qcloud');
+      if (cb) cb.classList.toggle('on', hasField('is_cloud') || hasField('is_cloude'));
+      const sb = pane.querySelector('.fx-e-search');
+      if (sb) { sb.disabled = !q; sb.style.opacity = q ? '' : '.5'; }
+    }
+
+    function refresh(fromText) { renderCards(); updateState(fromText); }
+
+    function applyHl(ci) {
+      st.hlCi = ci;
+      if (!cardsEl) return;
+      cardsEl.querySelectorAll('.fx-e-group').forEach((g) => g.classList.toggle('fx-e-hl', ci != null && +g.dataset.ci === ci));
+    }
+
+    // 读入页面语句（此后恢复自动跟随：页面语句变了再切回编辑器标签页会自动重读）
+    function parseFromPage() {
+      st.lastParsed = currentQuery();
+      st.loaded = false;
+      st.cards = parseQueryToCards(st.lastParsed);
+      st.focus = null;
+      applyHl(null);
+      refresh();
+    }
+
+    // 显式载入一条语句（指纹 / 预设覆盖 / 空白查询）：此后不再自动跟随页面语句
+    function loadQuery(q) {
+      st.cards = parseQueryToCards(q || '');
+      st.focus = null;
+      st.loaded = true;
+      applyHl(null);
+      refresh();
+    }
+
+    // 预设并入：同字段同拼接方式的卡自动合并行并去重
+    function insertPreset(content) {
+      st.cards = mergeCards(st.cards, parseQueryToCards(content));
+      st.focus = null;
+      refresh();
+    }
+
+    // 快速开关：再点一次移除；云服务行兼容 is_cloud / is_cloude 两种写法
+    function toggleQuick(kind) {
+      const isIt = (c) => c.raw == null && (kind === 'month'
+        ? c.field.toLowerCase() === 'after'
+        : (c.field.toLowerCase() === 'is_cloud' || c.field.toLowerCase() === 'is_cloude'));
+      if (st.cards.some(isIt)) st.cards = st.cards.filter((c) => !isIt(c));
+      else if (kind === 'month') st.cards.push({ field: 'after', join: '&&', rows: [{ op: '=', value: monthAgoOf(new Date()) }] });
+      else st.cards.push({ field: 'is_cloud', join: '&&', rows: [{ op: '=', value: 'false' }] });
+      st.focus = null;
+      refresh();
+    }
+
+    function focusCell(ci, ri, which) {
+      const el = pane.querySelector(`[data-ci="${ci}"][data-ri="${ri}"][data-f="${which}"]`);
+      if (el) el.focus();
+    }
+
+    // 新增字段卡（kind='card'）；在焦点卡追加值（kind='row'，继承焦点行/末行运算符）
+    function addItem(kind) {
+      if (kind === 'row' && st.cards.length) {
+        const fc = st.focus && st.cards[st.focus.ci];
+        const ci = fc ? st.focus.ci : st.cards.length - 1;
+        const card = st.cards[ci];
+        if (card && card.raw == null) {
+          const ref = (st.focus && st.focus.ri >= 0 && card.rows[st.focus.ri]) || card.rows[card.rows.length - 1];
+          card.rows.push({ op: ref ? ref.op : '=', value: '' });
+          refresh();
+          focusCell(ci, card.rows.length - 1, 'value');
+          return;
+        }
+      }
+      const card = { field: '', join: '&&', rows: [{ op: '=', value: '' }] };
+      let ci = st.cards.length;
+      if (st.focus && st.cards[st.focus.ci]) ci = st.focus.ci + 1; // 插到焦点卡之后
+      st.cards.splice(ci, 0, card);
+      refresh();
+      const fld = pane.querySelector(`.fx-e-cfld[data-ci="${ci}"]`);
+      if (fld) fld.focus();
+    }
+
+    /* ---- 共用交互（主编辑器与预设编辑一致） ---- */
+    if (qtext) {
+      // 语句框手工编辑：实时解析成字段卡（fromText=true 阻止 updateState 回写语句框本身）
+      qtext.addEventListener('input', () => {
+        st.cards = parseQueryToCards(qtext.value);
+        st.focus = null;
+        applyHl(null);
+        renderCards();
+        updateState(true);
+      });
+      // 失焦时把语句框规范化为合成语句（含括号补全），解析结果肉眼可见
+      qtext.addEventListener('blur', () => {
+        const q = cardsToQuery(st.cards);
+        if (qtext.value !== q) qtext.value = q;
+      });
+      // 单击语句框：光标落在哪个条件上，就滚动并高亮上方对应卡；该卡/行同时成为焦点
+      //（存预设、Alt+O 追加值的目标都跟着光标走）
+      qtext.addEventListener('click', () => {
+        const m = cardTextSpans(st.cards, qtext.value).leafAt(qtext.selectionStart);
+        if (!m) return;
+        st.focus = { ci: m.ci, ri: m.ri };
+        applyHl(m.ci);
+        const g = cardsEl && cardsEl.querySelector(`.fx-e-group[data-ci="${m.ci}"]`);
+        if (g) g.scrollIntoView({ block: 'nearest' });
+      });
+    }
+
+    if (cardsEl) {
+      cardsEl.addEventListener('input', (e) => {
+        const el = e.target;
+        if (!el.dataset || el.dataset.ci === undefined) return;
+        const card = st.cards[+el.dataset.ci];
+        if (!card) return;
+        if (el.dataset.f === 'raw') card.raw = el.value;
+        else if (el.dataset.f === 'field') card.field = el.value.trim().toLowerCase();
+        else if (el.dataset.f === 'value') {
+          const row = card.rows && card.rows[+el.dataset.ri];
+          if (row) row.value = el.value;
+        }
+        updateState();
+      });
+      cardsEl.addEventListener('change', (e) => {
+        const el = e.target;
+        if (!el.dataset || el.dataset.ci === undefined) return;
+        const card = st.cards[+el.dataset.ci];
+        if (!card) return;
+        if (el.dataset.f === 'op') {
+          const row = card.rows && card.rows[+el.dataset.ri];
+          if (row) { row.op = el.value; updateState(); }
+        } else if (el.dataset.f === 'join') {
+          card.join = el.value;
+          refresh(); // 行间连接符与括号高亮随之变化
+        }
+      });
+      // 聚焦卡片：成为焦点卡（存预设/Alt+O 目标），并在语句框里选中该卡的文本
+      cardsEl.addEventListener('focusin', (e) => {
+        if (!e.target.dataset || e.target.dataset.ci === undefined) return;
+        st.focus = { ci: +e.target.dataset.ci, ri: e.target.dataset.ri === undefined ? -1 : +e.target.dataset.ri };
+        applyHl(st.focus.ci);
+        if (!qtext) return;
+        const sp = cardTextSpans(st.cards, qtext.value).spanOfCard(st.focus.ci);
+        if (sp) qtext.setSelectionRange(sp.start, sp.end);
+      });
+      cardsEl.addEventListener('click', (e) => {
+        const rd = e.target.closest && e.target.closest('.fx-e-rdel');
+        if (rd) {
+          const ci = +rd.dataset.ci;
+          const card = st.cards[ci];
+          if (card && card.rows) {
+            card.rows.splice(+rd.dataset.ri, 1);
+            if (!card.rows.length) st.cards.splice(ci, 1);
+            st.focus = null;
+            applyHl(null);
+            refresh();
+          }
+          return;
+        }
+        const cd = e.target.closest && e.target.closest('.fx-e-cdel');
+        if (cd) {
+          st.cards.splice(+cd.closest('.fx-e-group').dataset.ci, 1);
+          st.focus = null;
+          applyHl(null);
+          refresh();
+          return;
+        }
+        const ca = e.target.closest && e.target.closest('.fx-e-cadd');
+        if (ca) {
+          const ci = +ca.closest('.fx-e-group').dataset.ci;
+          const card = st.cards[ci];
+          if (card && card.raw == null) {
+            const ref = card.rows[card.rows.length - 1];
+            card.rows.push({ op: ref ? ref.op : '=', value: '' });
+            refresh();
+            focusCell(ci, card.rows.length - 1, 'value');
+          }
+        }
+      });
+      const andb = pane.querySelector('.fx-e-andb');
+      const orb = pane.querySelector('.fx-e-orb');
+      if (andb) andb.addEventListener('click', () => addItem('card'));
+      if (orb) orb.addEventListener('click', () => addItem('row'));
+    }
+
+    refresh();
+    return {
+      pane,
+      parseFromPage,
+      loadQuery,
+      insertPreset,
+      toggleQuick,
+      addItem,
+      getQuery: () => cardsToQuery(st.cards),
+      focusInfo: () => (st.focus && st.cards[st.focus.ci] ? { card: st.cards[st.focus.ci], ri: st.focus.ri } : null),
+      pageChanged: () => !st.loaded && currentQuery() !== st.lastParsed
+    };
+  }
+
+  // 主编辑器内联快插列表（列表底部有「管理」入口进管理浮层）
+  function renderPresetQuickList(scope) {
+    const list = scope && scope.querySelector('.fx-e-plist');
+    if (!list) return;
+    const arr = loadPresets();
+    list.innerHTML = (arr.length ? arr.map((p) => `
+      <div class="fx-e-pitem" data-id="${p.id}">
+        <span class="fx-e-pn" title="${esc(p.name)}">${esc(p.name)}</span>
+        <span class="fx-e-pc" title="点击插入：${esc(p.content)}">${esc(p.content)}</span>
+        <b class="fx-e-pins" title="并入编辑器（同字段同拼接的卡自动合并去重）">插入</b>
+        <b class="fx-e-pdel" title="删除此预设">✕</b>
+      </div>`).join('') : '<div class="fx-e-pempty">暂无预设：输入名称后「💾 存为预设」——保存焦点行（无焦点行时焦点卡 / 整条语句）</div>')
+      + '<div class="fx-e-pmgr"><b class="fx-e-pmgrob" title="打开管理预设：新建、编辑、分组、排序、搜索、JSON 导入导出">⚙ 管理预设…</b></div>';
+    const btn = scope.querySelector('.fx-e-pbtn');
+    if (btn) btn.textContent = `📦 预设 (${arr.length})`;
+  }
+
+  function buildEditor(pane) {
+    const sfx = 'e' + (++editorSeq);
+    pane.innerHTML = editorShellHtml(sfx, false);
+    const editor = createEditor(pane, sfx);
+    editMain = editor;
+    renderPresetQuickList(pane);
+
+    // 预设快插面板：开关 / 保存 / 插入 / 删除（底部「管理」进管理浮层）
     const pbox = pane.querySelector('.fx-e-pbox');
     pane.querySelector('.fx-e-pbtn').addEventListener('click', () => {
       pbox.style.display = pbox.style.display === 'none' ? '' : 'none';
     });
     pane.querySelector('.fx-e-psave').addEventListener('click', () => {
-      const fc = editFocus && editCards[editFocus.ci];
-      const content = (fc && fc.raw == null) ? cardToQuery(fc) : cardsToQuery(editCards);
+      const f = editor.focusInfo();
+      let content, defName = '预设';
+      if (f && f.card.raw == null && f.ri >= 0 && f.card.rows[f.ri]) {
+        content = cardRowQ(f.card, f.card.rows[f.ri]); // 焦点行：单个条件存成预设
+        defName = f.card.field || '关键词';
+      } else if (f && f.card.raw == null) {
+        content = cardToQuery(f.card);                 // 焦点卡：整卡存成预设
+        defName = f.card.field || '关键词';
+      } else content = editor.getQuery();              // 无焦点：整条语句
       if (!content) { importToast('⚠️ 没有可保存的内容'); return; }
       const nameEl = pane.querySelector('.fx-e-pname');
-      const name = (nameEl.value || '').trim() || (fc && fc.raw == null && fc.field ? fc.field : '预设');
+      const name = (nameEl.value || '').trim() || defName;
       const arr = loadPresets();
       arr.push({ id: Date.now() + Math.floor(Math.random() * 1e6), name, content, ts: new Date().toLocaleString() });
       if (savePresets(arr)) {
         nameEl.value = '';
-        renderPresetList(pane);
+        renderPresetQuickList(pane);
         importToast(`✅ 已存预设「<b>${esc(name)}</b>」`);
       }
     });
     pane.querySelector('.fx-e-plist').addEventListener('click', (e) => {
+      if (e.target.closest && e.target.closest('.fx-e-pmgrob')) { openPresetMgr(); return; }
       const item = e.target.closest && e.target.closest('.fx-e-pitem');
       if (!item) return;
       const p = loadPresets().find((x) => String(x.id) === item.dataset.id);
       if (!p) return;
       if (e.target.closest('.fx-e-pdel')) {
         savePresets(loadPresets().filter((x) => String(x.id) !== item.dataset.id));
-        renderPresetList(pane);
+        renderPresetQuickList(pane);
         return;
       }
-      if (e.target.closest('.fx-e-pins') || e.target.closest('.fx-e-pc')) {
-        editCards = mergeCards(editCards, parseQueryToCards(p.content));
-        renderEditorCards(pane); updateEditorState(pane);
-      }
+      if (e.target.closest('.fx-e-pins') || e.target.closest('.fx-e-pc')) editor.insertPreset(p.content);
     });
 
-    pane.querySelector('.fx-e-qmonth').addEventListener('click', () => toggleQuick('month'));
-    pane.querySelector('.fx-e-qcloud').addEventListener('click', () => toggleQuick('cloud'));
-    pane.querySelector('.fx-e-reload').addEventListener('click', () => parseEditorFromPage());
-    pane.querySelector('.fx-e-andb').addEventListener('click', () => addEditorItem('card'));
-    pane.querySelector('.fx-e-orb').addEventListener('click', () => addEditorItem('row'));
-
-    const cards = pane.querySelector('.fx-e-cards');
-    cards.addEventListener('input', (e) => {
-      const el = e.target;
-      if (!el.dataset || el.dataset.ci === undefined) return;
-      const card = editCards[+el.dataset.ci];
-      if (!card) return;
-      if (el.dataset.f === 'raw') card.raw = el.value;
-      else if (el.dataset.f === 'field') card.field = el.value.trim().toLowerCase();
-      else if (el.dataset.f === 'value') {
-        const row = card.rows && card.rows[+el.dataset.ri];
-        if (row) row.value = el.value;
-      }
-      updateEditorState(pane);
+    pane.querySelector('.fx-e-qmonth').addEventListener('click', () => editor.toggleQuick('month'));
+    pane.querySelector('.fx-e-qcloud').addEventListener('click', () => editor.toggleQuick('cloud'));
+    // 使用当前查询语句：显式拉取页面语句（已有内容先确认），之后恢复自动跟随
+    pane.querySelector('.fx-e-reload').addEventListener('click', () => {
+      const q = currentQuery();
+      if (!q) { importToast('⚠️ 当前页面没有查询语句（先在 FOFA 发起一次搜索）'); return; }
+      if (editor.getQuery() && !window.confirm('编辑器里已有内容，用当前页面语句覆盖？')) return;
+      editor.parseFromPage();
+      importToast('↻ 已载入页面语句');
     });
-    cards.addEventListener('change', (e) => {
-      const el = e.target;
-      if (!el.dataset || el.dataset.ci === undefined) return;
-      const card = editCards[+el.dataset.ci];
-      if (!card) return;
-      if (el.dataset.f === 'op') {
-        const row = card.rows && card.rows[+el.dataset.ri];
-        if (row) { row.op = el.value; updateEditorState(pane); }
-      } else if (el.dataset.f === 'join') {
-        card.join = el.value;
-        renderEditorCards(pane); updateEditorState(pane); // 行间连接符与括号高亮随之变化
-      }
+    // 新建空白查询：从零组装，此后不再自动跟随页面语句
+    pane.querySelector('.fx-e-blank').addEventListener('click', () => {
+      if (editor.getQuery() && !window.confirm('编辑器里已有内容，清空并新建空白查询？')) return;
+      editor.loadQuery('');
+      importToast('📄 已新建空白查询');
     });
-    cards.addEventListener('focusin', (e) => {
-      if (!e.target.dataset || e.target.dataset.ci === undefined) return;
-      editFocus = { ci: +e.target.dataset.ci, ri: e.target.dataset.ri === undefined ? -1 : +e.target.dataset.ri };
+    // 存为指纹：当前语句直接进指纹库（自动填名称/产品/收录时间）
+    pane.querySelector('.fx-e-savefp').addEventListener('click', () => {
+      const q = editor.getQuery();
+      if (!q) { importToast('⚠️ 当前没有可保存的语句'); return; }
+      const prod = productFromQuery(q);
+      const arr = loadLib();
+      arr.unshift({ id: Date.now(), name: pickName(prod, []), query: q, ip: '', product: prod, category: '', region: '', server: '', title: '', after: fmtDate(new Date()), vendor: '', model: '', note: '', folder: '', ts: new Date().toLocaleString() });
+      saveLib(arr);
+      const libPane = document.querySelector('#fofa-toolbox-box .fx-t-pane-lib');
+      if (libPane) renderLib(libPane);
+      importToast('✅ 已存入指纹库（可切到「指纹库」标签页补充信息）');
     });
-    cards.addEventListener('click', (e) => {
-      const rd = e.target.closest && e.target.closest('.fx-e-rdel');
-      if (rd) {
-        const ci = +rd.dataset.ci;
-        const card = editCards[ci];
-        if (card && card.rows) {
-          card.rows.splice(+rd.dataset.ri, 1);
-          if (!card.rows.length) editCards.splice(ci, 1);
-          editFocus = null;
-          renderEditorCards(pane); updateEditorState(pane);
-        }
-        return;
-      }
-      const cd = e.target.closest && e.target.closest('.fx-e-cdel');
-      if (cd) {
-        editCards.splice(+cd.closest('.fx-e-group').dataset.ci, 1);
-        editFocus = null;
-        renderEditorCards(pane); updateEditorState(pane);
-        return;
-      }
-      const ca = e.target.closest && e.target.closest('.fx-e-cadd');
-      if (ca) {
-        const ci = +ca.closest('.fx-e-group').dataset.ci;
-        const card = editCards[ci];
-        if (card && card.raw == null) {
-          const ref = card.rows[card.rows.length - 1];
-          card.rows.push({ op: ref ? ref.op : '=', value: '' });
-          renderEditorCards(pane); updateEditorState(pane);
-          focusEditorCell(pane, ci, card.rows.length - 1, 'value');
-        }
-      }
-    });
-
     pane.querySelector('.fx-e-search').addEventListener('click', () => {
-      const q = cardsToQuery(editCards);
+      const q = editor.getQuery();
       if (q) openTab(q);
     });
     pane.querySelector('.fx-e-copy').addEventListener('click', (ev) => {
-      const q = cardsToQuery(editCards);
+      const q = editor.getQuery();
       if (q) copyText(q, ev.currentTarget);
     });
     // 编辑器内回车直接搜索
     pane.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.isComposing) {
-        const q = cardsToQuery(editCards);
+        const q = editor.getQuery();
         if (q) { e.preventDefault(); openTab(q); }
       }
     });
-    updateEditorState(pane);
+  }
+
+  /* ---------------- 管理预设（独立浮层） ----------------
+     名称/搜索串/分组（文件夹，一层）都可编辑；搜索串用一份内嵌的卡片编辑器改，
+     跟查询编辑器一样好操作；支持拖动排序（组内）、搜索过滤、JSON 导出导入；
+     「插入」并入主编辑器（同字段同拼接自动合并去重），「覆盖」整条替换主编辑器内容。
+     浮层已加入「点击外部关工具箱」的豁免列表，点浮层不会连带关掉工具箱。 */
+  function closePresetMgr() {
+    const el = document.getElementById('fofa-preset-mgr');
+    if (el) el.remove();
+  }
+
+  // 通用一层分组（指纹库文件夹 / 预设分组共用）：空组排最后，其余按中文排序，组内保持原顺序
+  function groupList(list, keyFn) {
+    const map = new Map();
+    for (const it of list) { const k = keyFn(it) || ''; if (!map.has(k)) map.set(k, []); map.get(k).push(it); }
+    return [...map.entries()]
+      .sort((a, b) => (a[0] === '' ? 1 : 0) - (b[0] === '' ? 1 : 0) || a[0].localeCompare(b[0], 'zh'))
+      .map(([group, items]) => ({ group, items }));
+  }
+
+  // 预设导入合并（纯函数）：名称+搜索串相同视为重复跳过；整条为空不计；id 冲突重分配
+  function mergePresets(raws, arr) {
+    const ids = new Set(arr.map((x) => x.id));
+    const key = (p) => String(p.name || '').trim() + '\u0000' + String(p.content || '').replace(/\s+/g, ' ').trim();
+    const seen = new Set(arr.map(key));
+    const list = arr.slice();
+    let added = 0, skipped = 0;
+    for (const raw of raws) {
+      if (!raw || typeof raw !== 'object') continue;
+      const it = {
+        name: String(raw.name == null ? '' : raw.name).trim(),
+        content: String(raw.content == null ? '' : raw.content).trim(),
+        group: String(raw.group == null ? '' : raw.group).trim(),
+        ts: String(raw.ts == null ? '' : raw.ts)
+      };
+      if (!it.name && !it.content) { skipped++; continue; }
+      if (seen.has(key(it))) { skipped++; continue; }
+      let id = Number(raw.id);
+      if (!raw.id || !Number.isFinite(id) || ids.has(id)) {
+        do { id = Date.now() + Math.floor(Math.random() * 1e6); } while (ids.has(id));
+      }
+      it.id = id;
+      ids.add(id);
+      seen.add(key(it));
+      list.push(it);
+      added++;
+    }
+    return { list, added, skipped };
+  }
+
+  function presetMgrFiltered(filter) {
+    const kw = String(filter || '').trim().toLowerCase();
+    const hit = (p) => !kw || [p.name, p.content, p.group].some((v) => String(v || '').toLowerCase().includes(kw));
+    return loadPresets().filter(hit);
+  }
+
+  function renderPresetMgr() {
+    const el = document.getElementById('fofa-preset-mgr');
+    if (!el) return;
+    const all = loadPresets();
+    const list = presetMgrFiltered(el.dataset.filter);
+    const groups = groupList(list, (p) => p.group);
+    const editingId = el.dataset.editing || '';
+    const showHeads = groups.length > 1 || groups.some((g) => g.group);
+    const NC = 5; // ⠿ + 名称 + 搜索串 + 分组 + 操作
+    let rows = '';
+    for (const g of groups) {
+      if (showHeads) rows += `<tr class="fx-l-ghead"><td colspan="${NC}">📁 ${esc(g.group || '未分组')}<span>${g.items.length}</span></td></tr>`;
+      for (const p of g.items) {
+        rows += `<tr data-id="${p.id}"><td class="fx-rowdrag" draggable="true" title="拖动调整顺序（同组内）">⠿</td>
+          <td data-f="name" contenteditable="true" spellcheck="false">${esc(p.name || '')}</td>
+          <td class="fx-l-mono fx-m-pcontent">${esc(p.content || '')}</td>
+          <td data-f="group" contenteditable="true" spellcheck="false" title="分组（文件夹，一层；留空=未分组）">${esc(p.group || '')}</td>
+          <td class="fx-l-ops"><b class="fx-m-pins" title="并入查询编辑器：同字段同拼接的卡自动合并去重">插入</b><b class="fx-m-povr" title="用此预设整条替换查询编辑器内容">覆盖</b><b class="fx-m-pedit" title="展开卡片编辑器修改搜索串">✏️ 编辑</b><b class="fx-m-pdel" title="删除此预设">✕</b></td></tr>`;
+        if (editingId && String(p.id) === editingId) rows += `<tr class="fx-m-peditor"><td colspan="${NC}"></td></tr>`;
+      }
+    }
+    el.querySelector('.fx-m-tablewrap').innerHTML = `<table class="fx-l-table">
+      <thead><tr><th style="width:26px"></th><th style="width:130px">名称</th><th>搜索串</th><th style="width:90px">分组</th><th style="width:210px">操作</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="${NC}" class="fx-l-empty">暂无预设：点「＋ 新建」，或到查询编辑器里「💾 存为预设」</td></tr>`}</tbody>
+    </table>`;
+    const cnt = el.querySelector('.fx-l-count');
+    if (cnt) cnt.textContent = String(el.dataset.filter || '').trim() ? `共 ${all.length} 条，匹配 ${list.length} 条` : `共 ${all.length} 条`;
+    if (editingId) mountPresetEditor(el.querySelector('.fx-m-peditor td'), all.find((p) => String(p.id) === editingId));
+  }
+
+  // 行内展开的预设编辑器：与主编辑器同一工厂、独立状态；保存写回该预设的搜索串
+  function mountPresetEditor(cell, preset) {
+    if (!cell || !preset) return;
+    const sfx = 'p' + (++editorSeq);
+    cell.innerHTML = editorShellHtml(sfx, true);
+    const ed = createEditor(cell, sfx);
+    ed.loadQuery(preset.content || '');
+    cell.querySelector('.fx-e-psave2').addEventListener('click', () => {
+      const q = ed.getQuery();
+      if (!q) { importToast('⚠️ 预设内容为空（要删除请回列表点 ✕）'); return; }
+      const arr = loadPresets();
+      const it = arr.find((x) => String(x.id) === String(preset.id));
+      if (it) { it.content = q; savePresets(arr); }
+      const mgr = document.getElementById('fofa-preset-mgr');
+      if (mgr) mgr.dataset.editing = '';
+      renderPresetMgr();
+      if (editMain) renderPresetQuickList(editMain.pane);
+      importToast('✅ 预设搜索串已保存');
+    });
+    cell.querySelector('.fx-e-ccollapse').addEventListener('click', () => {
+      const mgr = document.getElementById('fofa-preset-mgr');
+      if (mgr) mgr.dataset.editing = '';
+      renderPresetMgr();
+    });
+  }
+
+  function presetImport() {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.json,application/json';
+    inp.style.display = 'none';
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0];
+      inp.remove();
+      if (!f) return;
+      readImportText(f, (text) => {
+        if (text == null) { importToast('⚠️ 导入失败：文件读取错误'); return; }
+        let raws;
+        try { raws = JSON.parse(String(text).replace(/^\ufeff/, '')); }
+        catch (err) { importToast('⚠️ 导入失败：JSON 解析失败'); return; }
+        if (!Array.isArray(raws)) { importToast('⚠️ 导入失败：JSON 内容不是预设数组'); return; }
+        const res = mergePresets(raws, loadPresets());
+        savePresets(res.list);
+        renderPresetMgr();
+        if (editMain) renderPresetQuickList(editMain.pane);
+        importToast(`✅ 预设导入：新增 <b>${res.added}</b> 条，跳过 <b>${res.skipped}</b> 条（名称+搜索串重复或整条为空）`);
+      });
+    });
+    document.body.appendChild(inp);
+    inp.click();
+  }
+
+  function openPresetMgr() {
+    closePresetMgr();
+    injectStyle();
+    const el = document.createElement('div');
+    el.id = 'fofa-preset-mgr';
+    el.dataset.filter = '';
+    el.innerHTML = `
+      <div class="fx-m-head">
+        <span class="fx-m-title">📦 管理预设</span>
+        <input class="fx-m-search" placeholder="搜索：名称 / 搜索串 / 分组" spellcheck="false">
+        <span class="fx-l-hbtns"><button class="fx-m-close" title="关闭（Esc）">关闭</button></span>
+      </div>
+      <div class="fx-m-tools">
+        <span class="fx-l-count"></span>
+        <button class="fx-m-add" title="新建预设：自动展开卡片编辑器，写好点「💾 保存到预设」">＋ 新建</button>
+        <button class="fx-m-expj" title="导出为 JSON 文件">导出 JSON</button>
+        <button class="fx-m-impj" title="从 JSON 文件导入（按 名称+搜索串 去重合并）">导入</button>
+      </div>
+      <div class="fx-m-tablewrap"></div>
+      <div class="fx-l-foot">插入=并入查询编辑器（同字段同拼接自动合并去重） · 覆盖=整条替换编辑器内容 · ✏️ 编辑=卡片编辑器改搜索串 · 单元格点击即编辑 · 拖 ⠿ 组内排序</div>`;
+    el.querySelector('.fx-m-close').addEventListener('click', closePresetMgr);
+    el.querySelector('.fx-m-search').addEventListener('input', (e) => {
+      el.dataset.filter = e.target.value;
+      renderPresetMgr();
+    });
+    el.querySelector('.fx-m-add').addEventListener('click', () => {
+      const arr = loadPresets();
+      const it = { id: Date.now() + Math.floor(Math.random() * 1e6), name: '新预设', content: '', group: '', ts: new Date().toLocaleString() };
+      arr.push(it);
+      savePresets(arr);
+      el.dataset.editing = String(it.id);
+      renderPresetMgr();
+      const nameCell = el.querySelector(`tbody tr[data-id="${it.id}"] td[data-f="name"]`);
+      if (nameCell) nameCell.focus();
+    });
+    el.querySelector('.fx-m-expj').addEventListener('click', () => {
+      downloadFile('fofa-toolbox-presets.json', JSON.stringify(loadPresets(), null, 2), 'application/json');
+    });
+    el.querySelector('.fx-m-impj').addEventListener('click', presetImport);
+    // 名称/分组单元格编辑（focusout 委托；分组变了重排分组）
+    el.addEventListener('focusout', (e) => {
+      const td = e.target.closest && e.target.closest('td[contenteditable][data-f]');
+      if (!td) return;
+      const tr = td.closest('tr');
+      if (!tr || tr.dataset.id === undefined) return;
+      const arr = loadPresets();
+      const it = arr.find((x) => String(x.id) === tr.dataset.id);
+      if (!it) return;
+      it[td.dataset.f] = td.innerText.replace(/\u00a0/g, ' ').trim();
+      savePresets(arr);
+      if (td.dataset.f === 'group') renderPresetMgr();
+      if (editMain) renderPresetQuickList(editMain.pane);
+    });
+    attachRowDrag(el,
+      (a, b) => {
+        const arr = loadPresets();
+        const A = arr.find((x) => String(x.id) === a);
+        const B = arr.find((x) => String(x.id) === b);
+        return !!(A && B && String(A.group || '') === String(B.group || ''));
+      },
+      (id, targetId, before) => {
+        const arr = loadPresets();
+        const drag = arr.find((x) => String(x.id) === id);
+        if (!drag) { renderPresetMgr(); return; }
+        arr.splice(arr.indexOf(drag), 1);
+        const ti = arr.findIndex((x) => String(x.id) === targetId);
+        if (ti < 0) { renderPresetMgr(); return; }
+        arr.splice(before ? ti : ti + 1, 0, drag);
+        savePresets(arr);
+        renderPresetMgr();
+      });
+    el.addEventListener('click', (e) => {
+      const hit = (cls) => e.target.closest && e.target.closest(cls);
+      const row = hit('.fx-m-pins,.fx-m-povr,.fx-m-pedit,.fx-m-pdel');
+      if (!row) return;
+      const id = row.closest('tr').dataset.id;
+      if (id === undefined) return;
+      const p = loadPresets().find((x) => String(x.id) === id);
+      if (!p) return;
+      if (hit('.fx-m-pdel')) {
+        savePresets(loadPresets().filter((x) => String(x.id) !== id));
+        renderPresetMgr();
+        if (editMain) renderPresetQuickList(editMain.pane);
+        return;
+      }
+      if (hit('.fx-m-pedit')) {
+        el.dataset.editing = el.dataset.editing === id ? '' : id;
+        renderPresetMgr();
+        return;
+      }
+      // 插入/覆盖目标主编辑器：工具箱没开就先打开（并切到编辑器标签页）
+      if (!document.getElementById('fofa-toolbox-box')) openToolbox(false, 'edit');
+      if (!editMain) return;
+      if (hit('.fx-m-pins')) {
+        editMain.insertPreset(p.content);
+        importToast('✅ 已并入查询编辑器（同字段同拼接自动合并去重）');
+        return;
+      }
+      if (editMain.getQuery() && !window.confirm('编辑器里已有内容，用该预设整条覆盖？')) return;
+      editMain.loadQuery(p.content);
+      importToast(`✅ 已用预设「<b>${esc(p.name)}</b>」覆盖编辑器内容`);
+    });
+    document.documentElement.appendChild(el);
+    renderPresetMgr();
   }
 
   /* ---------------- 知识库（工具箱第三个标签页） ----------------
@@ -2037,7 +2777,8 @@
     { key: 'name', label: '名称', w: '110px' },
     { key: 'server', label: 'Server', w: '100px', mono: true },
     { key: 'title', label: 'Title', w: '160px' },
-    { key: 'note', label: '备注', w: '110px' }
+    { key: 'note', label: '备注', w: '110px' },
+    { key: 'folder', label: '文件夹', w: '70px' }
   ];
 
   function loadKb() {
@@ -2053,7 +2794,8 @@
   }
 
   // 归一化一条知识库记录（纯函数）：字段转字符串、图片只保留 data:image/ 前缀、
-  // order 为可选数字（同母厂组内的手动排序值，导入时保留）；整条为空返回 null
+  // order 为可选数字（同母厂组内的手动排序值，导入时保留）、folder 为可选文件夹（一层）；
+  // 整条为空返回 null（仅填文件夹不算内容）
   function kbNormEntry(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const it = {
@@ -2062,6 +2804,7 @@
       server: String(raw.server == null ? '' : raw.server).trim(),
       title: String(raw.title == null ? '' : raw.title).trim(),
       note: String(raw.note == null ? '' : raw.note),
+      folder: String(raw.folder == null ? '' : raw.folder).trim(),
       images: Array.isArray(raw.images) ? raw.images.filter((s) => typeof s === 'string' && s.indexOf('data:image/') === 0) : [],
       ts: raw.ts == null ? '' : String(raw.ts)
     };
@@ -2086,7 +2829,7 @@
 
   function kbFiltered(filter) {
     const kw = String(filter || '').trim().toLowerCase();
-    const hit = (it) => !kw || [it.parent, it.name, it.server, it.title, it.note]
+    const hit = (it) => !kw || [it.parent, it.name, it.server, it.title, it.note, it.folder]
       .some((v) => String(v || '').toLowerCase().includes(kw));
     // 母厂分组在前；组内先按手动 order（无则 0），再按名称兜底
     return loadKb().filter(hit)
@@ -2208,7 +2951,7 @@
   function buildKb(pane) {
     pane.innerHTML = `
       <div class="fx-l-tools">
-        <input class="fx-k-search" placeholder="搜索：母厂 / 名称 / Server / Title / 备注" spellcheck="false">
+        <input class="fx-k-search" placeholder="搜索：母厂 / 名称 / Server / Title / 备注 / 文件夹" spellcheck="false">
         <span class="fx-l-count">共 0 条</span>
         <button class="fx-k-add" title="新建记录：结果页会自动预填 名称/Server/Title">＋ 新建</button>
         <button class="fx-k-expj" title="导出为 JSON 文件（含截图）">导出 JSON</button>
@@ -2316,13 +3059,15 @@
       }
       if (e.target.closest('.fx-k-add')) {
         const arr = loadKb();
-        arr.push(newKbEntry());
+        const it = newKbEntry();
+        arr.push(it);
         saveKb(arr);
         const si = pane.querySelector('.fx-k-search'); // 清掉过滤，保证新行可见
         if (si) { si.value = ''; pane.dataset.filter = ''; }
         renderKb(pane);
-        const first = pane.querySelector('tbody td[contenteditable]');
-        if (first) first.focus();
+        // 表格按母厂分组排序，新行不一定在顶部：按 id 定位新行聚焦
+        const cell = pane.querySelector(`tbody tr[data-id="${it.id}"] td[contenteditable]`);
+        if (cell) { cell.focus(); cell.scrollIntoView({ block: 'nearest' }); }
         return;
       }
       if (e.target.closest('.fx-k-expj')) {
@@ -2465,13 +3210,16 @@
     const p = document.getElementById('fofa-toolbox-stage-panel');
     if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-stage-bar'))) hideStagePanel();
     const lib = document.getElementById('fofa-toolbox-box');
-    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-btn,#fofa-imp-toast,#fofa-kb-lightbox'))) closeToolbox(true);
+    // 管理预设浮层 / 导出选项对话框是工具箱的附属浮层：点它们不算“点外部”
+    if (lib && !lib.contains(e.target) && !(e.target.closest && e.target.closest('#fofa-toolbox-btn,#fofa-imp-toast,#fofa-kb-lightbox,#fofa-preset-mgr,#fofa-export-choice'))) closeToolbox(true);
   }, true);
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       const lb = document.getElementById('fofa-kb-lightbox');
       if (lb) { lb.remove(); return; } // 灯箱开着时只关灯箱，不连带关工具箱
+      const mgr = document.getElementById('fofa-preset-mgr');
+      if (mgr) { mgr.remove(); return; } // 管理预设浮层同理，逐层关闭
       hideMenu(); hideStagePanel(); rubberStop(true); closeToolbox(true);
     }
   }, true);
@@ -2485,9 +3233,9 @@
       return;
     }
     const pane = document.querySelector('#fofa-toolbox-box .fx-t-pane-edit');
-    if (pane && pane.classList.contains('on')) {
-      if (e.code === 'KeyA') { e.preventDefault(); addEditorItem('card'); }
-      else if (e.code === 'KeyO') { e.preventDefault(); addEditorItem('row'); }
+    if (pane && pane.classList.contains('on') && editMain) {
+      if (e.code === 'KeyA') { e.preventDefault(); editMain.addItem('card'); }
+      else if (e.code === 'KeyO') { e.preventDefault(); editMain.addItem('row'); }
     }
   }, true);
 
