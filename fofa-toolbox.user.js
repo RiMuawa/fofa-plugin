@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      4.1.0
+// @version      4.4.1
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '4.1.0';
+  const VER = '4.4.1';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -387,31 +387,68 @@
   }
 
   // 批量应用：当前语句里已存在的条件就地取反（排除模式），其余追加；包含模式跳过已存在
-  function applyBatch(cur, conds, mode) {
-    let q = (cur || '').trim();
+  // 包含模式的批量拼接（纯函数）：conds 里同字段的多个值用 || 并列并加括号——
+  // 一个字段不可能同时等于多个值，用 && 连接会使语句恒空；不同字段 / 识别不了的条件
+  // 仍用 && 连接；同值去重（模糊/精确算同值）；全文已存在于 cur 的条件跳过；
+  // 输出保持首见顺序（同字段的值聚到该字段首次出现的位置）
+  function joinIncludeBatch(cur, conds) {
+    const q = String(cur || '');
+    const groups = new Map();
+    const seq = []; // {g:字段组键} 在首见位置占位，或 {s:独立条件}
     for (const c of conds) {
       const clean = String(c).replace(/\s+/g, ' ').trim();
-      if (!clean) continue;
-      if (q.includes(clean)) {
-        if (mode === 'exclude') q = q.replace(clean, negate(clean) || clean);
-        continue;
-      }
-      const piece = mode === 'exclude' ? (negate(clean) || clean) : clean;
-      q = q ? q + ' && ' + piece : piece;
+      if (!clean || q.includes(clean)) continue;
+      const m = /^([A-Za-z_][\w.]*)\s*={1,2}(?!=)\s*([\s\S]+)$/.exec(clean);
+      if (!m) { seq.push({ s: clean }); continue; }
+      const gk = m[1].toLowerCase();
+      if (!groups.has(gk)) { groups.set(gk, []); seq.push({ g: gk }); }
+      const vk = m[2].replace(/\s+/g, ' ').trim();
+      if (groups.get(gk).some((x) => x.vk === vk)) continue;
+      groups.get(gk).push({ vk, clean });
     }
-    return q;
+    const pieces = [];
+    for (const it of seq) {
+      if (it.s) { pieces.push(it.s); continue; }
+      const g = groups.get(it.g);
+      pieces.push(g.length > 1 ? '(' + g.map((x) => x.clean).join(' || ') + ')' : g[0].clean);
+    }
+    return pieces.join(' && ');
   }
 
-  // 把一批（正条件形式的）暂存条件并入主查询编辑器：exclude 逐条取反、include 保持原样。
-  // 复用预设并入通道——拼成 && 链解析成卡后与编辑器现有卡自动合并去重（同字段集中一卡）
+  // 批量应用：排除时当前语句里已存在的条件就地取反（!= 之间用 && 是正确语义）；
+  // 包含时同字段多值走 joinIncludeBatch（|| 并列加括号），不同字段仍用 &&
+  function applyBatch(cur, conds, mode) {
+    const q0 = (cur || '').trim();
+    if (mode !== 'include') {
+      let q = q0;
+      for (const c of conds) {
+        const clean = String(c).replace(/\s+/g, ' ').trim();
+        if (!clean) continue;
+        if (q.includes(clean)) { q = q.replace(clean, negate(clean) || clean); continue; }
+        const piece = negate(clean) || clean;
+        q = q ? q + ' && ' + piece : piece;
+      }
+      return q;
+    }
+    const joined = joinIncludeBatch(q0, conds);
+    return joined ? (q0 ? q0 + ' && ' + joined : joined) : q0;
+  }
+
+  // 把一批（正条件形式的）暂存条件并入主查询编辑器：exclude 逐条取反成 && 排除链；
+  // include 走 joinIncludeBatch——同字段多值用 || 并列加括号（在编辑器里成或卡）。
+  // 复用预设并入通道——解析成卡后与编辑器现有卡自动合并去重（同字段集中一卡）
   function editorAppend(conds, mode) {
-    const pieces = conds.map((c) => String(c).replace(/\s+/g, ' ').trim()).filter(Boolean)
-      .map((c) => (mode === 'exclude' ? ensureNeg(c) : c));
-    if (!pieces.length) return;
+    const clean = (c) => String(c).replace(/\s+/g, ' ').trim();
+    const joined = mode === 'exclude'
+      ? conds.map(clean).filter(Boolean).map(ensureNeg).filter(Boolean).join(' && ')
+      : joinIncludeBatch('', conds);
+    if (!joined) return;
     if (!document.getElementById('fofa-toolbox-box')) openToolbox(false, 'edit');
     if (!editMain) return;
-    editMain.insertPreset(pieces.join(' && '));
-    importToast(mode === 'exclude' ? '✅ 已作为排除卡并入查询编辑器（可在编辑器里继续调整）' : '✅ 已并入查询编辑器（可在编辑器里继续调整）');
+    editMain.insertPreset(joined);
+    importToast(mode === 'exclude'
+      ? '✅ 已作为排除卡并入查询编辑器（可在编辑器里继续调整）'
+      : '✅ 已并入查询编辑器（同字段多值已并列成或卡，可继续调整）');
   }
 
   function openTab(query) {
@@ -480,7 +517,7 @@
 #fofa-toolbox-menu .fx-btns button:hover{background:#eef1f4}
 #fofa-toolbox-menu .fx-primary{flex:1;background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
 #fofa-toolbox-menu .fx-primary:hover{background:#ffab2e;border-color:#ffab2e}
-#fofa-toolbox-menu .fx-inc,#fofa-toolbox-menu .fx-or{flex:1}
+#fofa-toolbox-menu .fx-inc,#fofa-toolbox-menu .fx-or,#fofa-toolbox-menu .fx-eedit-ex,#fofa-toolbox-menu .fx-eedit-in{flex:1}
 #fofa-toolbox-menu .fx-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;color:#8b949e;font-size:10px;margin-top:6px}
 #fofa-toolbox-menu .fx-curwin{display:flex;align-items:center;gap:3px;cursor:pointer;user-select:none}
 #fofa-toolbox-menu .fx-curwin input{margin:0;accent-color:#f1961f}
@@ -657,6 +694,22 @@
   padding:4px 8px;border-bottom:1px solid #eef1f4}
 #fofa-toolbox-box .fx-l-ghead td span,#fofa-preset-mgr .fx-l-ghead td span{color:#8b949e;font-weight:400;margin-left:6px}
 #fofa-toolbox-box .fx-e-group.fx-e-hl{border-color:#f1961f;box-shadow:0 0 0 1.5px rgba(241,150,31,.4)}
+#fofa-toolbox-box .fx-l-folders,#fofa-toolbox-box .fx-k-folders{display:flex;gap:6px;padding:8px 12px 0;flex-wrap:wrap}
+#fofa-toolbox-box .fx-l-fchip{border:1px solid #d0d7de;background:#f6f8fa;border-radius:14px;padding:2px 10px;
+  cursor:pointer;font:12px/1.4 inherit;color:#57606a;white-space:nowrap}
+#fofa-toolbox-box .fx-l-fchip:hover{background:#eef1f4}
+#fofa-toolbox-box .fx-l-fchip.on{background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
+#fofa-toolbox-box .fx-l-ops b.fx-l-filebtn:hover{color:#b25e09}
+#fofa-toolbox-box .fx-l-selbar{display:flex;gap:6px;padding:8px 12px 0;align-items:center;flex-wrap:wrap}
+#fofa-toolbox-box .fx-l-selbar .fx-l-selcnt{color:#57606a}
+#fofa-toolbox-box .fx-l-selbar .fx-l-selcnt b{color:#b25e09}
+#fofa-toolbox-box .fx-l-selbar button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
+  cursor:pointer;font:12px/1.4 inherit;color:#24292f;white-space:nowrap}
+#fofa-toolbox-box .fx-l-selbar button:hover{background:#eef1f4}
+#fofa-toolbox-box .fx-l-selbar .fx-l-selmove{background:#f1961f;border-color:#f1961f;color:#fff;font-weight:600}
+#fofa-toolbox-box .fx-l-selbar .fx-l-selmove:hover{background:#ffab2e;border-color:#ffab2e}
+#fofa-toolbox-box td.fx-l-sel{text-align:center;width:26px}
+#fofa-toolbox-box td.fx-l-sel input{margin:0;accent-color:#f1961f;cursor:pointer}
 #fofa-toolbox-box .fx-l-quickbox{display:flex;gap:6px;padding:6px 12px 0;flex-wrap:wrap}
 #fofa-toolbox-box .fx-l-quickbox button{border:1px solid #d0d7de;background:#f6f8fa;border-radius:6px;padding:4px 10px;
   cursor:pointer;font:12px/1.4 inherit;color:#24292f;white-space:nowrap}
@@ -750,6 +803,10 @@
         <button class="fx-inc" title="将该条件以 且(&amp;&amp;) 追加到当前语句，并在新标签页打开">➕ 且包含</button>
         <button class="fx-or" title="将该条件以 或(||) 并入当前语句：优先并入语句里同字段的或组（括号内，与其他同类条件并列），没有可并的或组时把当前语句整体括起来再或">➕ 或包含</button>
       </div>
+      <div class="fx-btns">
+        <button class="fx-eedit-ex" title="把该条件取反后作为字段卡并入查询编辑器（同字段自动集中一卡、去重；工具箱没开会自动打开），不新开标签">✏️ 排除到编辑器</button>
+        <button class="fx-eedit-in" title="把该条件作为字段卡并入查询编辑器（同字段自动集中一卡、去重；工具箱没开会自动打开），不新开标签">✏️ 包含到编辑器</button>
+      </div>
       <div class="fx-foot">
         <label class="fx-curwin" title="勾选后在当前标签页内跳转，不再新开标签"><input type="checkbox">在本页打开</label>
         <span title="按住 Alt 用左键拖拽出一块区域，批量识别其中可排除的对象">Alt+拖拽=框选批量</span><span>v${VER}</span>
@@ -796,6 +853,17 @@
     menu.querySelector('.fx-primary').addEventListener('click', () => doOpen('exclude'));
     menu.querySelector('.fx-inc').addEventListener('click', () => doOpen('include'));
     menu.querySelector('.fx-or').addEventListener('click', () => doOpen('or'));
+    // 发送到查询编辑器：不打开新标签，作为字段卡并入主编辑器（工具箱没开会自动打开）
+    const doEdit = (mode) => {
+      const cond = getCond();
+      if (!cond) { input.focus(); return; }
+      const final = mode === 'exclude' ? ensureNeg(cond) : (!edited && cand.include ? cand.include : ensurePos(cond));
+      console.info(`[FOFA工具箱] v${VER} ${mode === 'exclude' ? '排除' : '包含'}到编辑器 -> ${final}`);
+      editorAppend([final], mode);
+      hideMenu();
+    };
+    menu.querySelector('.fx-eedit-ex').addEventListener('click', () => doEdit('exclude'));
+    menu.querySelector('.fx-eedit-in').addEventListener('click', () => doEdit('include'));
     input.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') { ev.preventDefault(); doOpen('exclude'); }
     });
@@ -851,9 +919,9 @@
       ).join('')}</div>
       <div class="fx-p-btns">
         <button class="fx-p-primary" title="把全部暂存条件取反后并入当前语句并打开">🚫 全部排除并打开</button>
-        <button class="fx-p-inc" title="把全部暂存条件并入当前语句并打开">➕ 全部包含</button>
+        <button class="fx-p-inc" title="把全部暂存条件并入当前语句并打开（同字段多值自动用 || 并列加括号）">➕ 全部包含</button>
         <button class="fx-p-eexclude" title="把全部暂存条件取反后作为字段卡并入查询编辑器：同字段自动集中一卡、去重；工具箱没开会自动打开，不新开标签">✏️ 排除到编辑器</button>
-        <button class="fx-p-einclude" title="把全部暂存条件作为字段卡并入查询编辑器：同字段自动集中一卡、去重；工具箱没开会自动打开，不新开标签">✏️ 包含到编辑器</button>
+        <button class="fx-p-einclude" title="把全部暂存条件作为字段卡并入查询编辑器：同字段多值自动并列成或卡（加括号）、去重；工具箱没开会自动打开，不新开标签">✏️ 包含到编辑器</button>
         <button class="fx-p-clear" title="清空暂存">清空</button>
       </div>`;
 
@@ -1295,59 +1363,86 @@
     });
   }
 
-  // 搜索过滤（与知识库一致）：按全部列内容匹配，置顶条目仍优先
-  function libFiltered(filter) {
+  // 搜索 + 文件夹视图过滤：按全部列内容（含文件夹名）匹配，置顶条目仍优先
+  function libFiltered(filter, folderView) {
     const kw = String(filter || '').trim().toLowerCase();
-    const hit = (it) => !kw || LIB_FIELDS.some((f) => String(it[f.key] || '').toLowerCase().includes(kw));
+    const hit = (it) => inFolderView(it, folderView)
+      && (!kw || LIB_FIELDS.some((f) => String(it[f.key] || '').toLowerCase().includes(kw)));
     return loadLib().filter(hit).slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
   }
 
   function renderLib(pane) {
     const arr = loadLib();
-    // 工具栏（含搜索框、快速编辑下拉）只建一次：输入搜索词时仅重绘表格区，输入框焦点不丢。
+    // 工具栏（含搜索框、快速操作下拉）只建一次：输入搜索词时仅重绘表格区，输入框焦点不丢。
     // 事件在 openToolbox 里对 pane 挂一次（委托，重渲染不影响）
     if (!pane.querySelector('.fx-l-tablewrap')) {
       pane.innerHTML = `
       <div class="fx-l-tools">
-        <input class="fx-l-libsearch" placeholder="搜索：名称 / 语句 / 产品 / 类型 / 国家 / 厂商 / 文件夹…" spellcheck="false" title="按任意列内容实时过滤（置顶条目仍优先）">
+        <input class="fx-l-libsearch" placeholder="搜索：名称 / 语句 / 产品 / 类型 / 国家 / 厂商 / 文件夹…" spellcheck="false" title="按任意列内容实时过滤（含文件夹名；置顶条目仍优先）">
         <span class="fx-l-count"></span>
-        <button class="fx-l-add" title="新建条目：结果页会自动填写当前语句与排名信息，否则为空白">＋ 新建</button>
-        <button class="fx-l-quickbtn" title="批量整理全库语句（每个操作都可「↩ 撤销」）">⚡ 快速编辑</button>
+        <button class="fx-l-add" title="新建条目：结果页会自动填写当前语句与排名信息，否则为空白；在某个文件夹视图里新建会自动归档进该文件夹">＋ 新建</button>
+        <button class="fx-l-quickbtn" title="批量操作：整理全库语句（可 ↩ 撤销）/ 批量移动到文件夹等">⚡ 快速操作</button>
         <button class="fx-l-expj" title="导出为 JSON 文件">导出 JSON</button>
         <button class="fx-l-expc" title="导出为 CSV 文件（Excel 可直接打开）">导出 CSV</button>
         <button class="fx-l-imp" title="从本脚本导出的 JSON/CSV 文件导入（Excel 另存的 GBK 编码 CSV 也能识别）：按搜索语句去重，已存在的自动跳过">导入</button>
-        <button class="fx-l-undo" style="display:none" title="恢复最近一次快速编辑（全库去重/删除地区等）前的完整备份（会覆盖其后的修改）">↩ 撤销</button>
+        <button class="fx-l-undo" style="display:none" title="恢复最近一次语句类快速操作（全库去重/删除地区等，不含批量移动）前的完整备份（会覆盖其后的修改）">↩ 撤销</button>
       </div>
       <div class="fx-l-quickbox" style="display:none">
         <button data-op="dedup" title="对所有条目的语句执行去重瘦身：同字段只保留最后一条定位条件、丢弃中间排除与冗余分类；完成后可「↩ 撤销」">🧹 全库去重</button>
         <button data-op="dropcountry" title="去掉每条语句里全部 country 条件（或组/单条/排除都删，其他字段与原样片段不动）；完成后可「↩ 撤销」">🌏 删除地区</button>
+        <button data-sop="move" title="进入批量选择：勾选条目后统一移动到某个文件夹（搜索 / 文件夹视图可先过滤再全选，实现按条件批量归档）">📦 批量移动</button>
       </div>
+      <div class="fx-l-folders"></div>
+      <div class="fx-l-selbar" style="display:none"></div>
       <div class="fx-l-tablewrap"></div>
-      <div class="fx-l-foot">搜索框实时过滤（任意列内容匹配） · 「文件夹」列分一类（一层，不嵌套；空=未分组） · 单元格点击即可编辑，失焦自动保存 · 📌 置顶 · ✏️ 发送到查询编辑器 · 🔍 搜索（after 内 YESTERDAY=昨天 / LastMonth=一月前） · 数据保存在浏览器本地（localStorage）</div>`;
+      <div class="fx-l-foot">顶部文件夹条切换视图（全部 / 未归档 / 各文件夹）· 行内 📁 把条目归档/移动到文件夹 · 搜索框实时过滤（任意列 + 文件夹名）· 单元格点击即可编辑，失焦自动保存 · 📌 置顶 · ✏️ 发送到查询编辑器 · 数据保存在浏览器本地（localStorage）</div>`;
       const si = pane.querySelector('.fx-l-libsearch');
       if (si && pane.dataset.filter) si.value = pane.dataset.filter;
     }
     const kw = String(pane.dataset.filter || '').trim();
-    // 文件夹分组（一层）；组内置顶优先，其余保持存储顺序（sort 稳定）
-    const sorted = libFiltered(pane.dataset.filter);
-    const groups = groupList(sorted, (it) => it.folder);
-    const showHeads = groups.length > 1 || groups.some((g) => g.group);
-    const rowOf = (it) => `<tr data-id="${it.id}"${it.pin ? ' class="fx-l-userpin"' : ''}><td class="fx-rowdrag" draggable="true" title="拖动调整顺序（同文件夹、同置顶状态内）">⠿</td>${LIB_FIELDS.map((f) =>
+    const view = pane.dataset.folder || ''; // ''=全部 '*'=未归档 其他=文件夹名
+    // 文件夹筛选条：全部 / 未归档 / 各文件夹（含条数，点击切换）
+    const folders = new Map();
+    for (const it of arr) {
+      const f = String(it.folder || '').trim();
+      if (f) folders.set(f, (folders.get(f) || 0) + 1);
+    }
+    const unfiled = arr.filter((it) => !String(it.folder || '').trim()).length;
+    const chip = (fo, label, on) => `<button class="fx-l-fchip${on ? ' on' : ''}" data-fo="${esc(fo)}">${esc(label)}</button>`;
+    const fbar = pane.querySelector('.fx-l-folders');
+    if (fbar) {
+      fbar.innerHTML = chip('', `全部 (${arr.length})`, view === '')
+        + chip('*', `未归档 (${unfiled})`, view === '*')
+        + [...folders.entries()].sort((a, b) => a[0].localeCompare(b[0], 'zh'))
+          .map(([f, n]) => chip(f, `📁 ${f} (${n})`, view === f)).join('');
+      fbar.style.display = (folders.size || view === '*') ? '' : 'none'; // 一个文件夹都没有时收起
+    }
+    // 视图 + 搜索过滤；全部视图下按文件夹分组展示（📁 组头），其余视图不重复展示组头
+    const sorted = libFiltered(pane.dataset.filter, view);
+    const cols = LIB_FIELDS.filter((f) => f.key !== 'folder'); // 文件夹是导航不是列
+    const groups = view === '' ? groupList(sorted, (it) => it.folder) : [{ group: '', items: sorted }];
+    const showHeads = view === '' && (groups.length > 1 || groups.some((g) => g.group));
+    const selecting = pane.dataset.selecting === '1'; // 批量选择模式：首列手柄换成复选框
+    const lead = selecting
+      ? (it) => `<td class="fx-l-sel"><input type="checkbox" title="选中以批量移动"></td>`
+      : () => `<td class="fx-rowdrag" draggable="true" title="拖动调整顺序（同文件夹、同置顶状态内）">⠿</td>`;
+    const rowOf = (it) => `<tr data-id="${it.id}"${it.pin ? ' class="fx-l-userpin"' : ''}>${lead(it)}${cols.map((f) =>
       `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
-    ).join('')}<td class="fx-l-ops"><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-toedit" title="把此语句发送到查询编辑器继续编辑（编辑器将脱离页面语句跟随）">✏️</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-dedup" title="语句去重瘦身：同字段只保留最后一条定位条件、丢弃中间排除与冗余分类；可撤销">🧹</b>${libRowUndo.has(String(it.id)) ? '<b class="fx-l-undorow" title="撤销本行去重，恢复原语句（会覆盖其后对此语句的修改）">↩</b>' : ''}<b class="fx-l-del" title="删除此条">✕</b></td></tr>`;
+    ).join('')}<td class="fx-l-ops"><b class="fx-l-filebtn" title="归档到文件夹：输入名字归档/移动，清空则移出文件夹">📁</b><b class="fx-l-pinbtn${it.pin ? ' on' : ''}" title="${it.pin ? '取消置顶' : '置顶'}">📌</b><b class="fx-l-toedit" title="把此语句发送到查询编辑器继续编辑（编辑器将脱离页面语句跟随）">✏️</b><b class="fx-l-search" title="用此语句搜索（YESTERDAY/LastMonth 自动替换为日期）">🔍</b><b class="fx-l-cal" title="把 after 日期替换为一月前再搜索">📅</b><b class="fx-l-dedup" title="语句去重瘦身：同字段只保留最后一条定位条件、丢弃中间排除与冗余分类；可撤销">🧹</b>${libRowUndo.has(String(it.id)) ? '<b class="fx-l-undorow" title="撤销本行去重，恢复原语句（会覆盖其后对此语句的修改）">↩</b>' : ''}<b class="fx-l-del" title="删除此条">✕</b></td></tr>`;
     let rows = '';
     for (const g of groups) {
-      if (showHeads) rows += `<tr class="fx-l-ghead"><td colspan="${LIB_FIELDS.length + 2}">📁 ${esc(g.group || '未分组')}<span>${g.items.length}</span></td></tr>`;
+      if (showHeads) rows += `<tr class="fx-l-ghead"><td colspan="${cols.length + 2}">📁 ${esc(g.group || '未归档')}<span>${g.items.length}</span></td></tr>`;
       rows += g.items.map(rowOf).join('');
     }
     pane.querySelector('.fx-l-tablewrap').innerHTML = `<table class="fx-l-table">
-        <thead><tr><th style="width:26px"></th>${LIB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="${LIB_FIELDS.length + 2}" class="fx-l-empty">${kw ? `没有匹配的条目：换个关键词，或清空搜索框显示全部 ${arr.length} 条` : '暂无收藏条目：点「＋ 新建」即可收藏当前语句（结果页自动填写），或手动添加'}</td></tr>`}</tbody>
+        <thead><tr><th style="width:26px"></th>${cols.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>操作</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="${cols.length + 2}" class="fx-l-empty">${kw ? `没有匹配的条目：换个关键词，或清空搜索框显示全部 ${arr.length} 条` : (view ? '此视图暂无条目：点「＋ 新建」新建（会归入当前文件夹），或在其他视图用行内 📁 归档进来' : '暂无收藏条目：点「＋ 新建」即可收藏当前语句（结果页自动填写），或手动添加')}</td></tr>`}</tbody>
       </table>`;
     const cnt = pane.querySelector('.fx-l-count');
     if (cnt) cnt.textContent = kw ? `共 ${arr.length} 条，匹配 ${sorted.length} 条` : `共 ${arr.length} 条`;
     const ub = pane.querySelector('.fx-l-undo');
     if (ub) ub.style.display = libUndoSnap ? '' : 'none';
+    updateSelBar(pane);
   }
 
   // 事件只在 openToolbox 时对 pane 挂一次。绝不能放进 renderLib：
@@ -1371,6 +1466,19 @@
       if (!si) return;
       pane.dataset.filter = si.value;
       renderLib(pane);
+    });
+
+    // 文件夹筛选条：切换视图（全部 / 未归档 / 各文件夹）
+    pane.addEventListener('click', (e) => {
+      const fc = e.target.closest && e.target.closest('.fx-l-fchip');
+      if (!fc) return;
+      pane.dataset.folder = fc.dataset.fo || '';
+      renderLib(pane);
+    });
+
+    // 批量选择：勾选复选框时更新选择条计数
+    pane.addEventListener('change', (e) => {
+      if (e.target.closest && e.target.closest('td.fx-l-sel input')) updateSelBarCnt(pane);
     });
 
     // 拖动排序：同一文件夹、同一置顶状态内移动（跨边界不允许，否则稳定排序会把它弹回去）
@@ -1433,12 +1541,32 @@
         importToast('↩ 已恢复本行去重前的语句');
         return;
       }
-      // ⚡ 快速编辑：展开/收起操作下拉；点某个操作就对全库逐条套用（共用 ↩ 整库撤销）
+      // ⚡ 快速操作：展开/收起操作下拉
       if (e.target.closest('.fx-l-quickbtn')) {
         const qb = pane.querySelector('.fx-l-quickbox');
         if (qb) qb.style.display = qb.style.display === 'none' ? '' : 'none';
         return;
       }
+      // 📦 批量移动：进入批量选择模式（首列变复选框 + 选择条）
+      if (e.target.closest && e.target.closest('.fx-l-quickbox button[data-sop="move"]')) {
+        const qb = pane.querySelector('.fx-l-quickbox');
+        if (qb) qb.style.display = 'none';
+        pane.dataset.selecting = '1';
+        renderLib(pane);
+        importToast('☑ 已进入批量选择：勾选条目后点「📁 移动到文件夹…」（搜索 / 文件夹视图可先过滤再全选）');
+        return;
+      }
+      // 批量选择条：退出 / 全选 / 移动到文件夹
+      if (e.target.closest('.fx-l-selexit')) { delete pane.dataset.selecting; renderLib(pane); return; }
+      if (e.target.closest('.fx-l-selall')) {
+        const boxes = Array.from(pane.querySelectorAll('td.fx-l-sel input'));
+        const all = boxes.length && boxes.every((b) => b.checked);
+        boxes.forEach((b) => { b.checked = !all; });
+        updateSelBarCnt(pane);
+        return;
+      }
+      if (e.target.closest('.fx-l-selmove')) { batchMoveSelected(pane, loadLib, saveLib, renderLib); return; }
+      // 语句类快速操作：对全库逐条套用（共用 ↩ 整库撤销）
       const qop = e.target.closest && e.target.closest('.fx-l-quickbox button[data-op]');
       if (qop) {
         const op = LIB_QUICK_OPS[qop.dataset.op];
@@ -1467,6 +1595,22 @@
         importToast('↩ 已恢复去重前的指纹库');
         return;
       }
+      // 📁：归档到文件夹（输入名字归档/移动；清空=移出文件夹；当前在某文件夹视图时预填其名）
+      const fb = e.target.closest && e.target.closest('.fx-l-filebtn');
+      if (fb) {
+        const arr2 = loadLib();
+        const it2 = arr2.find((x) => String(x.id) === fb.closest('tr').dataset.id);
+        if (!it2) return;
+        const curView = pane.dataset.folder || '';
+        const pre = (curView && curView !== '*') ? curView : String(it2.folder || '').trim();
+        const name = window.prompt('归档到哪个文件夹？（输入名字=归档/移动到该文件夹；清空=移出文件夹）', pre);
+        if (name === null) return; // 取消
+        it2.folder = name.trim();
+        saveLib(arr2);
+        renderLib(pane);
+        importToast(it2.folder ? `📁 已归档到「${esc(it2.folder)}」` : '📁 已移出文件夹');
+        return;
+      }
       // 📌：置顶/取消置顶
       const pinBtn = e.target.closest && e.target.closest('.fx-l-pinbtn');
       if (pinBtn) {
@@ -1492,12 +1636,15 @@
       }
       if (e.target.closest('.fx-l-add')) {
         const arr2 = loadLib();
-        // 结果页上自动填写当前语句与排名信息；无当前语句（如首页）则为空白条目
+        // 结果页上自动填写当前语句与排名信息；无当前语句（如首页）则为空白条目；
+        // 在某个文件夹视图里新建时自动归档进该文件夹
         const entry = captureFingerprint() || (() => {
           const blank = { id: Date.now(), ts: new Date().toLocaleString() };
           for (const f of LIB_FIELDS) blank[f.key] = '';
           return blank;
         })();
+        const fv = pane.dataset.folder || '';
+        entry.folder = (fv && fv !== '*') ? fv : '';
         arr2.unshift(entry);
         saveLib(arr2);
         const si = pane.querySelector('.fx-l-libsearch'); // 清掉过滤，保证新行可见
@@ -1914,7 +2061,7 @@
     return cardsToQuery(parseQueryToCards(q).filter((c) => c.raw != null || c.field.toLowerCase() !== f));
   }
 
-  // 快速编辑操作集（指纹库「⚡ 快速编辑」下拉）：对全库逐条套用纯函数，共用 ↩ 整库撤销
+  // 语句类快速操作集（指纹库「⚡ 快速操作」下拉）：对全库逐条套用纯函数，共用 ↩ 整库撤销
   const LIB_QUICK_OPS = {
     dedup: { label: '全库去重', fn: dedupeQuery },
     dropcountry: { label: '删除地区', fn: (q) => dropFieldQuery(q, 'country') }
@@ -2533,6 +2680,54 @@
     if (el) el.remove();
   }
 
+  // 文件夹视图判定（纯函数，指纹库/知识库共用）：view 为 '' = 全部、'*' = 未归档、其他 = 指定文件夹名
+  function inFolderView(it, view) {
+    if (view === '*') return !String(it.folder || '').trim();
+    if (view) return String(it.folder || '').trim() === String(view);
+    return true;
+  }
+
+  /* 批量选择 + 批量移动（指纹库/知识库共用）：进入选择模式后表格首列（原拖动手柄处）
+     变为复选框，文件夹条下方出现选择条。搜索框 / 文件夹视图先过滤、再全选、再移动，
+     即可按条件批量归档。选择状态只存在于 DOM 复选框里，重渲染自然清空 */
+  function updateSelBar(pane) {
+    const bar = pane.querySelector('.fx-l-selbar');
+    if (!bar) return;
+    const on = pane.dataset.selecting === '1';
+    bar.style.display = on ? '' : 'none';
+    if (on) bar.innerHTML = `
+      <span class="fx-l-selcnt">已选 <b>${pane.querySelectorAll('td.fx-l-sel input:checked').length}</b> 项</span>
+      <button class="fx-l-selmove" title="把选中的条目移动到指定文件夹（输入名字=移动到该文件夹；清空=移出文件夹）">📁 移动到文件夹…</button>
+      <button class="fx-l-selall" title="选中 / 取消当前视图里显示的全部条目">☑ 全选</button>
+      <button class="fx-l-selexit" title="退出批量选择">✕ 退出</button>`;
+  }
+
+  function updateSelBarCnt(pane) {
+    const b = pane.querySelector('.fx-l-selcnt b');
+    if (b) b.textContent = String(pane.querySelectorAll('td.fx-l-sel input:checked').length);
+  }
+
+  // 批量移动到文件夹：把勾选的条目统一改 folder（load/save/render 由两个库各自传入）
+  function batchMoveSelected(pane, load, save, render) {
+    const boxes = Array.from(pane.querySelectorAll('td.fx-l-sel input:checked'));
+    if (!boxes.length) { importToast('⚠️ 还没有选中任何条目'); return; }
+    const curView = pane.dataset.folder || '';
+    const pre = (curView && curView !== '*') ? curView : '';
+    const name = window.prompt(`把选中的 ${boxes.length} 项移动到哪个文件夹？（输入名字=移动到该文件夹；清空=移出文件夹）`, pre);
+    if (name === null) return; // 取消
+    const fo = name.trim();
+    const arr = load();
+    let n = 0;
+    for (const b of boxes) {
+      const it = arr.find((x) => String(x.id) === b.closest('tr').dataset.id);
+      if (it && String(it.folder || '').trim() !== fo) { it.folder = fo; n++; }
+    }
+    if (n) save(arr);
+    delete pane.dataset.selecting;
+    render(pane);
+    importToast(fo ? `📁 已把 <b>${n}</b> 项移动到「${esc(fo)}」` : `📁 已把 <b>${n}</b> 项移出文件夹`);
+  }
+
   // 通用一层分组（指纹库文件夹 / 预设分组共用）：空组排最后，其余按中文排序，组内保持原顺序
   function groupList(list, keyFn) {
     const map = new Map();
@@ -2827,10 +3022,11 @@
     };
   }
 
-  function kbFiltered(filter) {
+  function kbFiltered(filter, folderView) {
     const kw = String(filter || '').trim().toLowerCase();
-    const hit = (it) => !kw || [it.parent, it.name, it.server, it.title, it.note, it.folder]
-      .some((v) => String(v || '').toLowerCase().includes(kw));
+    const hit = (it) => inFolderView(it, folderView)
+      && (!kw || [it.parent, it.name, it.server, it.title, it.note, it.folder]
+        .some((v) => String(v || '').toLowerCase().includes(kw)));
     // 母厂分组在前；组内先按手动 order（无则 0），再按名称兜底
     return loadKb().filter(hit)
       .sort((a, b) => String(a.parent || '').localeCompare(String(b.parent || ''), 'zh')
@@ -2841,20 +3037,44 @@
   function renderKb(pane) {
     const wrap = pane.querySelector('.fx-k-wrap');
     if (!wrap) return;
-    const list = kbFiltered(pane.dataset.filter || '');
-    const rows = list.map((it) => `<tr data-id="${it.id}"><td class="fx-rowdrag" draggable="true" title="拖动调整顺序（仅在同一母厂组内）">⠿</td>${KB_FIELDS.map((f) =>
+    const arr = loadKb();
+    const view = pane.dataset.folder || ''; // ''=全部 '*'=未归档 其他=文件夹名
+    // 文件夹筛选条（与指纹库一致）
+    const folders = new Map();
+    for (const it of arr) {
+      const f = String(it.folder || '').trim();
+      if (f) folders.set(f, (folders.get(f) || 0) + 1);
+    }
+    const unfiled = arr.filter((it) => !String(it.folder || '').trim()).length;
+    const chip = (fo, label, on) => `<button class="fx-l-fchip${on ? ' on' : ''}" data-fo="${esc(fo)}">${esc(label)}</button>`;
+    const fbar = pane.querySelector('.fx-k-folders');
+    if (fbar) {
+      fbar.innerHTML = chip('', `全部 (${arr.length})`, view === '')
+        + chip('*', `未归档 (${unfiled})`, view === '*')
+        + [...folders.entries()].sort((a, b) => a[0].localeCompare(b[0], 'zh'))
+          .map(([f, n]) => chip(f, `📁 ${f} (${n})`, view === f)).join('');
+      fbar.style.display = (folders.size || view === '*') ? '' : 'none';
+    }
+    const kw = String(pane.dataset.filter || '').trim();
+    const list = kbFiltered(pane.dataset.filter || '', view);
+    const cols = KB_FIELDS.filter((f) => f.key !== 'folder'); // 文件夹是导航不是列
+    const selecting = pane.dataset.selecting === '1'; // 批量选择模式：首列手柄换成复选框
+    const rows = list.map((it) => `<tr data-id="${it.id}">${selecting
+      ? `<td class="fx-l-sel"><input type="checkbox" title="选中以批量移动"></td>`
+      : `<td class="fx-rowdrag" draggable="true" title="拖动调整顺序（仅在同一母厂组内）">⠿</td>`}${cols.map((f) =>
       `<td${f.mono ? ' class="fx-l-mono"' : ''} data-f="${f.key}" contenteditable="true" spellcheck="false">${esc(it[f.key] || '')}</td>`
     ).join('')}
       <td class="fx-k-imgs" tabindex="0" title="点击聚焦后 Ctrl+V 粘贴产品截图">${(it.images || []).map((src, i) =>
         `<span class="fx-k-thumbwrap"><img class="fx-k-thumb" data-i="${i}" src="${src}" title="点击放大"><b class="fx-k-imgdel" data-i="${i}" title="删除此图">✕</b></span>`
       ).join('')}<b class="fx-k-addimg" title="选择图片文件">📎</b>${(it.images || []).length ? '' : '<span class="fx-k-hint">点击后 Ctrl+V 粘贴</span>'}</td>
-      <td class="fx-l-ops"><b class="fx-k-del" title="删除此条">✕</b></td></tr>`).join('');
+      <td class="fx-l-ops"><b class="fx-l-filebtn" title="归档到文件夹：输入名字归档/移动，清空则移出文件夹">📁</b><b class="fx-k-del" title="删除此条">✕</b></td></tr>`).join('');
     const cnt = pane.querySelector('.fx-l-count');
-    if (cnt) cnt.textContent = `共 ${list.length} 条`;
+    if (cnt) cnt.textContent = kw ? `共 ${arr.length} 条，匹配 ${list.length} 条` : `共 ${arr.length} 条`;
     wrap.innerHTML = `<table class="fx-l-table">
-      <thead><tr><th style="width:26px"></th>${KB_FIELDS.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>产品截图</th><th>操作</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="${KB_FIELDS.length + 3}" class="fx-l-empty">暂无记录：点「＋ 新建」，在结果页会自动预填 Server/Title；截图列点击后 Ctrl+V 粘贴产品前端</td></tr>`}</tbody>
+      <thead><tr><th style="width:26px"></th>${cols.map((f) => `<th style="width:${f.w}">${f.label}</th>`).join('')}<th>产品截图</th><th>操作</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="${cols.length + 3}" class="fx-l-empty">${kw ? '没有匹配的记录：换个关键词，或清空搜索框' : (view ? '此视图暂无记录：在其他视图用行内 📁 归档进来' : '暂无记录：点「＋ 新建」，在结果页会自动预填 Server/Title；截图列点击后 Ctrl+V 粘贴产品前端')}</td></tr>`}</tbody>
     </table>`;
+    updateSelBar(pane);
   }
 
   // 截图压缩：最长边 640、白底 JPEG（约几十 KB/张），避免撑爆 localStorage
@@ -2953,12 +3173,18 @@
       <div class="fx-l-tools">
         <input class="fx-k-search" placeholder="搜索：母厂 / 名称 / Server / Title / 备注 / 文件夹" spellcheck="false">
         <span class="fx-l-count">共 0 条</span>
-        <button class="fx-k-add" title="新建记录：结果页会自动预填 名称/Server/Title">＋ 新建</button>
+        <button class="fx-k-add" title="新建记录：结果页会自动预填 名称/Server/Title；在某个文件夹视图里新建会自动归档进该文件夹">＋ 新建</button>
+        <button class="fx-l-quickbtn" title="批量操作：批量移动到文件夹等">⚡ 快速操作</button>
         <button class="fx-k-expj" title="导出为 JSON 文件（含截图）">导出 JSON</button>
         <button class="fx-k-impj" title="从 JSON 文件导入（按 母厂+名称+Server+Title 去重合并）">导入</button>
       </div>
+      <div class="fx-l-quickbox" style="display:none">
+        <button data-sop="move" title="进入批量选择：勾选记录后统一移动到某个文件夹（搜索 / 文件夹视图可先过滤再全选，实现按条件批量归档）">📦 批量移动</button>
+      </div>
+      <div class="fx-k-folders"></div>
+      <div class="fx-l-selbar" style="display:none"></div>
       <div class="fx-l-tablewrap fx-k-wrap"></div>
-      <div class="fx-l-foot">按「母厂/贴牌自」排序自然形成贴牌分组 · 搜「大华」即列出其下所有贴牌产品 · 截图列点击聚焦后 Ctrl+V 粘贴（自动压缩存储）· 数据保存在浏览器本地</div>`;
+      <div class="fx-l-foot">顶部文件夹条切换视图（全部 / 未归档 / 各文件夹）· 行内 📁 归档/移动 · 按「母厂/贴牌自」排序自然形成贴牌分组 · 搜「大华」即列出其下所有贴牌产品 · 截图列点击聚焦后 Ctrl+V 粘贴（自动压缩存储）· 数据保存在浏览器本地</div>`;
     renderKb(pane);
 
     // 单元格编辑保存（focusout 委托，与指纹库一致）
@@ -2976,6 +3202,43 @@
     pane.querySelector('.fx-k-search').addEventListener('input', (e) => {
       pane.dataset.filter = e.target.value;
       renderKb(pane);
+    });
+
+    // 文件夹筛选条：切换视图（全部 / 未归档 / 各文件夹）
+    pane.addEventListener('click', (e) => {
+      const fc = e.target.closest && e.target.closest('.fx-l-fchip');
+      if (!fc) return;
+      pane.dataset.folder = fc.dataset.fo || '';
+      renderKb(pane);
+    });
+
+    // ⚡ 快速操作：下拉开关 / 批量移动进入选择模式 / 选择条按钮 / 复选框计数
+    pane.addEventListener('click', (e) => {
+      if (e.target.closest('.fx-l-quickbtn')) {
+        const qb = pane.querySelector('.fx-l-quickbox');
+        if (qb) qb.style.display = qb.style.display === 'none' ? '' : 'none';
+        return;
+      }
+      if (e.target.closest && e.target.closest('.fx-l-quickbox button[data-sop="move"]')) {
+        const qb = pane.querySelector('.fx-l-quickbox');
+        if (qb) qb.style.display = 'none';
+        pane.dataset.selecting = '1';
+        renderKb(pane);
+        importToast('☑ 已进入批量选择：勾选记录后点「📁 移动到文件夹…」（搜索 / 文件夹视图可先过滤再全选）');
+        return;
+      }
+      if (e.target.closest('.fx-l-selexit')) { delete pane.dataset.selecting; renderKb(pane); return; }
+      if (e.target.closest('.fx-l-selall')) {
+        const boxes = Array.from(pane.querySelectorAll('td.fx-l-sel input'));
+        const all = boxes.length && boxes.every((b) => b.checked);
+        boxes.forEach((b) => { b.checked = !all; });
+        updateSelBarCnt(pane);
+        return;
+      }
+      if (e.target.closest('.fx-l-selmove')) { batchMoveSelected(pane, loadKb, saveKb, renderKb); return; }
+    });
+    pane.addEventListener('change', (e) => {
+      if (e.target.closest && e.target.closest('td.fx-l-sel input')) updateSelBarCnt(pane);
     });
 
     // 粘贴截图：点击截图列（tabindex 聚焦）后 Ctrl+V
@@ -3019,6 +3282,21 @@
       });
 
     pane.addEventListener('click', (e) => {
+      // 📁：归档到文件夹（与指纹库一致）
+      const fb = e.target.closest && e.target.closest('.fx-l-filebtn');
+      if (fb) {
+        const arr = loadKb();
+        const it = arr.find((x) => String(x.id) === fb.closest('tr').dataset.id);
+        if (!it) return;
+        const curView = pane.dataset.folder || '';
+        const pre = (curView && curView !== '*') ? curView : String(it.folder || '').trim();
+        const name = window.prompt('归档到哪个文件夹？（输入名字=归档/移动到该文件夹；清空=移出文件夹）', pre);
+        if (name === null) return; // 取消
+        it.folder = name.trim();
+        if (saveKb(arr)) renderKb(pane);
+        importToast(it.folder ? `📁 已归档到「${esc(it.folder)}」` : '📁 已移出文件夹');
+        return;
+      }
       const del = e.target.closest && e.target.closest('.fx-k-del');
       if (del) {
         saveKb(loadKb().filter((x) => String(x.id) !== del.closest('tr').dataset.id));
@@ -3060,6 +3338,9 @@
       if (e.target.closest('.fx-k-add')) {
         const arr = loadKb();
         const it = newKbEntry();
+        // 在某个文件夹视图里新建时自动归档进该文件夹
+        const fv = pane.dataset.folder || '';
+        it.folder = (fv && fv !== '*') ? fv : '';
         arr.push(it);
         saveKb(arr);
         const si = pane.querySelector('.fx-k-search'); // 清掉过滤，保证新行可见

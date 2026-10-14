@@ -74,7 +74,8 @@ eq('条件存在-忽略空白', condInQuery('title="x" && port="80"', 'title="x"
 eq('条件存在-空白无关包含', condInQuery('app="A" && country="PK"', 'country="PK"'), true);
 eq('条件不存在', condInQuery('app="A" && port="80"', 'country="PK"'), false);
 
-// ===== 批量应用 applyBatch =====
+// ===== 批量应用 applyBatch（含 joinIncludeBatch：同字段多值 || 并列加括号） =====
+const joinIncludeBatch = eval('(0,' + grabFn('joinIncludeBatch').replace('function joinIncludeBatch', 'function') + ')');
 const applyBatch = eval('(0,' + grabFn('applyBatch').replace('function applyBatch', 'function') + ')');
 eq('批量排除-追加', applyBatch('title="web"', ['product="A"', 'country="US"'], 'exclude'),
   'title="web" && product!="A" && country!="US"');
@@ -83,6 +84,20 @@ eq('批量排除-已存在就地取反', applyBatch('(category="路由器" && af
 eq('批量包含-跳过已存在', applyBatch('title="web"', ['title="web"', 'port="80"'], 'include'),
   'title="web" && port="80"');
 eq('批量-无当前语句', applyBatch('', ['product="A"'], 'exclude'), 'product!="A"');
+
+// ===== 包含模式批量拼接：同字段多值用 || 并列加括号（一个字段不可能同时等于多个值） =====
+eq('包含拼接-用户示例三条product', applyBatch('title="web"', ['product="A"', 'product="B"', 'product="C"'], 'include'),
+  'title="web" && (product="A" || product="B" || product="C")');
+eq('包含拼接-不同字段仍用且', applyBatch('', ['product="A"', 'country="CN"', 'product="B"'], 'include'),
+  '(product="A" || product="B") && country="CN"');
+eq('包含拼接-同值去重', joinIncludeBatch('', ['product="A"', 'product="A"', 'product=="A"']), 'product="A"');
+eq('包含拼接-已存在的跳过后成单值不括号', applyBatch('product="A"', ['product="A"', 'product="B"'], 'include'),
+  'product="A" && product="B"');
+eq('包含拼接-识别不了的条件独立追加', joinIncludeBatch('title="x"', ['(a="1" || b="2")', 'port="80"']),
+  '(a="1" || b="2") && port="80"');
+eq('包含拼接-混合字段各自分组', applyBatch('', ['country="PK"', 'product="X"', 'country="IN"', 'server="nginx"'], 'include'),
+  '(country="PK" || country="IN") && product="X" && server="nginx"');
+eq('包含拼接-全空', joinIncludeBatch('a="1"', []), '');
 
 // ===== 指纹库 CSV 导出 =====
 const csvMatch = /const csvCell = ([^;]+);/.exec(src);
@@ -324,6 +339,12 @@ eq('删字段-region不是country', dropFieldQuery('region="Xinjiang" && title="
 const groupList = eval('(0,' + grabFn('groupList').replace('function groupList', 'function') + ')');
 eq('分组-空组排最后', groupList([{ g: 'B' }, { g: '' }, { g: 'A' }], (x) => x.g).map((x) => x.group), ['A', 'B', '']);
 eq('分组-组内保持原顺序', groupList([{ g: 'A', i: 1 }, { g: 'B', i: 2 }, { g: 'A', i: 3 }], (x) => x.g)[0].items.map((x) => x.i), [1, 3]);
+
+// ===== 文件夹视图判定（''=全部 '*'=未归档 其他=指定文件夹） =====
+const inFolderView = eval('(0,' + grabFn('inFolderView').replace('function inFolderView', 'function') + ')');
+eq('文件夹视图-全部', [inFolderView({ folder: 'A' }, ''), inFolderView({ folder: '' }, ''), inFolderView({}, '')], [true, true, true]);
+eq('文件夹视图-未归档', [inFolderView({ folder: 'A' }, '*'), inFolderView({ folder: '' }, '*'), inFolderView({ folder: ' ' }, '*')], [false, true, true]);
+eq('文件夹视图-指定', [inFolderView({ folder: 'A' }, 'A'), inFolderView({ folder: 'B' }, 'A'), inFolderView({ folder: 'a' }, 'A')], [true, false, false]);
 
 // ===== 预设导入合并 =====
 const mergePresets = eval('(0,' + grabFn('mergePresets').replace('function mergePresets', 'function') + ')');
