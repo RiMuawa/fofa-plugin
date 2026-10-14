@@ -317,6 +317,8 @@ eq('补齐-上下文-开口引号可补', JSON.stringify(textCompleteContext('af
 eq('补齐-上下文-单个&补&&', JSON.stringify(textCompleteContext('title="x" &', 11)), JSON.stringify({ kind: 'join', token: '&' }));
 eq('补齐-上下文-已完整&&不补', JSON.stringify(textCompleteContext('title="x" &&', 12)), JSON.stringify({ kind: null, token: '' }));
 eq('补齐-候选-字段前缀', JSON.stringify(completeCandidates(textCompleteContext('cou', 3))), JSON.stringify(['country']));
+eq('补齐-候选-cert子字段前缀', JSON.stringify(completeCandidates(textCompleteContext('cert.su', 7))), JSON.stringify(['cert.subject', 'cert.subject.cn', 'cert.subject.org']));
+eq('补齐-候选-新字段jarm给运算符', JSON.stringify(textCompleteContext('jarm', 4)), JSON.stringify({ kind: 'op', field: 'jarm', token: 'jarm' }));
 eq('补齐-候选-字段空词根不给', completeCandidates(textCompleteContext('title="x" && ', 13)), []);
 eq('补齐-候选-布尔值空词根全给', JSON.stringify(completeCandidates(textCompleteContext('is_cloud=', 9))), JSON.stringify(['true', 'false']));
 eq('补齐-候选-协议补闭引号', JSON.stringify(completeCandidates(textCompleteContext('protocol="ht', 12))), JSON.stringify(['http"', 'https"']));
@@ -324,6 +326,8 @@ eq('补齐-候选-光标在闭引号不加引号', JSON.stringify(completeCandid
 eq('补齐-候选-运算符三件套', JSON.stringify(completeCandidates(textCompleteContext('country', 7))), JSON.stringify(['country="', 'country=="', 'country!=']));
 eq('补齐-候选-连接符翻倍', JSON.stringify(completeCandidates(textCompleteContext('a="1" |', 7))), JSON.stringify(['||']));
 eq('补齐-值-布尔字段', JSON.stringify(valueCandidates('is_cloud')), JSON.stringify(['true', 'false']));
+eq('补齐-值-扩展布尔is_honeypot', JSON.stringify(valueCandidates('is_honeypot')), JSON.stringify(['true', 'false']));
+eq('补齐-值-证书布尔is_valid', JSON.stringify(valueCandidates('cert.is_valid')), JSON.stringify(['true', 'false']));
 eq('补齐-值-协议含rtsp', valueCandidates('protocol').includes('rtsp'), true);
 eq('补齐-值-日期内置语法在前', valueCandidates('after').slice(0, 2), ['YESTERDAY', 'LastMonth']);
 eq('补齐-值-普通字段无候选', valueCandidates('title'), []);
