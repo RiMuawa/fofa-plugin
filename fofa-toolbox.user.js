@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      4.4.1
+// @version      4.5.2
 // @description  FOFA 工具箱：右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -19,7 +19,7 @@
 
   const OPEN_IN_BACKGROUND = false; // 新标签页是否在后台打开（后台打开会丢失 opener 树状关系）
   const MAX_TEXT_LEN = 60;          // 兜底取词的最大文本长度
-  const VER = '4.4.1';
+  const VER = '4.5.2';
 
   console.info(`[FOFA工具箱] v${VER} 已加载（${location.host}）— 若右键无反应，请先确认控制台显示的是本版本号`);
 
@@ -690,6 +690,18 @@
 #fofa-kb-lightbox{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.82);display:flex;
   align-items:center;justify-content:center;cursor:zoom-out}
 #fofa-kb-lightbox img{max-width:92vw;max-height:92vh;border-radius:4px;box-shadow:0 6px 40px rgba(0,0,0,.5)}
+#fofa-ac-ghost{position:absolute;z-index:2147483645;pointer-events:none;color:transparent;white-space:pre;
+  overflow:hidden;display:none}
+#fofa-ac-ghost.ta{white-space:pre-wrap;word-break:break-all;box-sizing:border-box}
+#fofa-ac-ghost .sug{color:#aab2ba}
+#fofa-ac-dd{position:absolute;z-index:2147483646;background:#fff;border:1px solid #d0d7de;border-radius:8px;
+  box-shadow:0 4px 16px rgba(0,0,0,.14);padding:4px;min-width:120px;overflow:auto;display:none;
+  font:12px/1.6 Consolas,Menlo,monospace;color:#24292f}
+#fofa-ac-dd .ac-hint{color:#8b949e;font-size:10px;font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  text-align:center;padding:1px 0 3px;border-bottom:1px solid #f0f2f5;margin-bottom:2px}
+#fofa-ac-dd .ac-it{padding:2px 10px;border-radius:4px;cursor:pointer;white-space:nowrap}
+#fofa-ac-dd .ac-it:hover{background:#f6f8fa}
+#fofa-ac-dd .ac-it.on{background:#f1961f;color:#fff}
 #fofa-toolbox-box .fx-l-ghead td,#fofa-preset-mgr .fx-l-ghead td{background:#f6f8fa;color:#57606a;font-weight:600;
   padding:4px 8px;border-bottom:1px solid #eef1f4}
 #fofa-toolbox-box .fx-l-ghead td span,#fofa-preset-mgr .fx-l-ghead td span{color:#8b949e;font-weight:400;margin-left:6px}
@@ -1878,6 +1890,250 @@
     'protocol','server','product','app','category','icon_hash','header','body','cert','cert.subject.org',
     'cert.subject.cn','after','before','is_cloud','is_domain','is_ipv6','status_code','type','fid','header_hash'];
 
+  /* ---------------- TAB 补齐（终端式：灰字幽灵文本 + 候选下拉；语句框与卡片输入共用） ----------------
+     只做语法级补齐：字段名、字段后的运算符、特定字段的值（布尔 / 协议 / 内置日期语法）、
+     && 与 || 连接符；不学习输入习惯。TAB 应用、↑↓ 切换、Esc 收起、点选应用。
+     幽灵层与下拉是全局单例（同一时刻只有一个焦点控件），应用时整词替换（可纠正大小写）。 */
+
+  const AC_BOOLEAN_FIELDS = new Set(['is_cloud', 'is_cloude', 'is_domain', 'is_ipv6']);
+
+  // 某字段可补齐的值（静态语法知识；after/before 含内置占位语法与今天 / 一月前日期）
+  function valueCandidates(field) {
+    const f = String(field || '').toLowerCase();
+    if (AC_BOOLEAN_FIELDS.has(f)) return ['true', 'false'];
+    if (f === 'protocol') return Array.from(PROTO_SET).sort();
+    if (f === 'after' || f === 'before') return ['YESTERDAY', 'LastMonth', fmtDate(new Date()), monthAgoOf(new Date())];
+    return [];
+  }
+
+  // 语句框的补齐上下文（纯函数）：看光标前是什么——
+  // 字段="值（带引号，光标在闭引号上则不再补闭引号）、字段=值（不带引号，词根可为空）、
+  // 恰好完整的字段名（补运算符）、字段名词根、单个 & 或 |（补连接符）
+  function textCompleteContext(text, caret) {
+    const t = String(text || '');
+    const before = t.slice(0, caret);
+    let m = /([A-Za-z_][\w.]*)\s*(==|=|!=)\s*"([^"]*)$/.exec(before);
+    if (m) {
+      if (m[3] === '') {
+        // 光标紧贴引号：只有开口引号（等号后直接跟引号）才补，闭引号处不补
+        if (!/([A-Za-z_][\w.]*)\s*(==|=|!=)\s*"$/.test(before)) return { kind: null, token: '' };
+      }
+      return { kind: 'value', field: m[1], token: m[3], quoted: true, atClose: t.charAt(caret) === '"' };
+    }
+    m = /(?:^|[^A-Za-z_.])([A-Za-z_][\w.]*)\s*(==|=|!=)\s*([^\s"()&|]*)$/.exec(before);
+    if (m) return { kind: 'value', field: m[1], token: m[3], quoted: false, atClose: false };
+    m = /(?:^|[^A-Za-z_.])([A-Za-z_][\w.]*)$/.exec(before);
+    if (m && EDITOR_FIELDS.indexOf(m[1].toLowerCase()) >= 0) return { kind: 'op', field: m[1], token: m[1] };
+    if (before.endsWith('&') && !before.endsWith('&&')) return { kind: 'join', token: '&' };
+    if (before.endsWith('|') && !before.endsWith('||')) return { kind: 'join', token: '|' };
+    m = /([A-Za-z_][\w.]*)$/.exec(before);
+    if (m && m[1]) return { kind: 'field', token: m[1] };
+    return { kind: null, token: '' };
+  }
+
+  // 上下文 -> 候选完整串（纯函数，最多 10 条）：应用时用候选整词替换词根
+  function completeCandidates(ctx) {
+    if (!ctx || !ctx.kind) return [];
+    const tok = String(ctx.token || '');
+    const low = (s) => s.toLowerCase();
+    if (ctx.kind === 'field') {
+      if (!tok) return []; // 字段名候选太多，敲了字母再给
+      return EDITOR_FIELDS.filter((f) => f !== tok && low(f).startsWith(low(tok)));
+    }
+    if (ctx.kind === 'value') {
+      const suffix = ctx.quoted && !ctx.atClose ? '"' : ''; // 带引号且后面还不是闭引号时顺手补上
+      return valueCandidates(ctx.field)
+        .filter((v) => v !== tok && low(v).startsWith(low(tok)))
+        .map((v) => v + suffix);
+    }
+    if (ctx.kind === 'op') return ['="', '=="', '!='].map((o) => ctx.token + o);
+    if (ctx.kind === 'join') return [tok + tok]; // & -> &&、| -> ||
+    return [];
+  }
+
+  const ac = { el: null, ctx: null, cands: [], idx: 0, ghost: null, dd: null };
+
+  function acHideVisual() {
+    if (ac.ghost) ac.ghost.style.display = 'none';
+    if (ac.dd) ac.dd.style.display = 'none';
+  }
+
+  function acHide() {
+    acHideVisual();
+    ac.el = null;
+    ac.ctx = null;
+    ac.cands = [];
+    ac.idx = 0;
+  }
+
+  // 补齐层宿主：挂进工具箱 / 预设浮层内部（跟着主窗口拖动走），兜底 documentElement
+  function acHost() {
+    return (ac.el && (ac.el.closest('#fofa-toolbox-box') || ac.el.closest('#fofa-preset-mgr'))) || document.documentElement;
+  }
+
+  // 幽灵层与候选下拉：全局只建一份，挂到当前宿主上复用（宿主变化时重新挂载）
+  function acEnsure() {
+    const host = acHost();
+    if (ac.ghost && ac.ghost.parentNode === host) return;
+    if (!ac.ghost) {
+      ac.ghost = document.createElement('div');
+      ac.ghost.id = 'fofa-ac-ghost';
+      ac.dd = document.createElement('div');
+      ac.dd.id = 'fofa-ac-dd';
+      // mousedown 阶段应用并 preventDefault：不抢焦点，输入框不失焦
+      ac.dd.addEventListener('mousedown', (e) => {
+        const it = e.target.closest && e.target.closest('.ac-it');
+        if (!it) return;
+        e.preventDefault();
+        ac.idx = +it.dataset.i;
+        acApply();
+      });
+    }
+    host.appendChild(ac.ghost);
+    host.appendChild(ac.dd);
+  }
+
+  // 可补齐的控件：语句框、卡片字段/值输入（原样片段与下拉选择不补）
+  function acTarget(el) {
+    if (!el || !el.dataset) return null;
+    if (el.classList && el.classList.contains('fx-e-qtext')) return el;
+    if (el.tagName === 'INPUT' && (el.dataset.f === 'field' || el.dataset.f === 'value')) return el;
+    return null;
+  }
+
+  function acContextOf(el) {
+    if (el.classList.contains('fx-e-qtext')) return textCompleteContext(el.value, el.selectionStart);
+    if (el.dataset.f === 'field') return { kind: 'field', token: el.value.slice(0, el.selectionStart) };
+    if (el.dataset.f === 'value') {
+      const fld = el.closest('.fx-e-group') && el.closest('.fx-e-group').querySelector('.fx-e-cfld');
+      return { kind: 'value', field: fld ? fld.value : '', token: el.value.slice(0, el.selectionStart), quoted: false, atClose: false };
+    }
+    return { kind: null, token: '' };
+  }
+
+  function acFocus(el) {
+    ac.el = el;
+    acRefresh();
+  }
+
+  function acRefresh() {
+    if (!ac.el || !ac.el.isConnected || document.activeElement !== ac.el) return acHideVisual();
+    const el = ac.el;
+    if (el.selectionStart !== el.selectionEnd) return acHideVisual();
+    ac.ctx = acContextOf(el);
+    ac.cands = completeCandidates(ac.ctx).slice(0, 10);
+    ac.idx = 0;
+    if (!ac.cands.length) return acHideVisual();
+    acEnsure();
+    acRenderGhost();
+    acRenderDd();
+  }
+
+  // 幽灵文本：前段（透明）+ 建议（灰）+ 后段（透明），盖在控件上不挡交互。
+  // 字体 / 内边距从目标控件逐像素对齐（getComputedStyle），保证灰字与实字同宽同高
+  function acRenderGhost() {
+    const el = ac.el, g = ac.ghost;
+    const ins = ac.cands[ac.idx].slice(String(ac.ctx.token || '').length);
+    if (!ins) { g.style.display = 'none'; return; }
+    const caret = el.selectionStart;
+    const ta = el.classList.contains('fx-e-qtext');
+    const cs = getComputedStyle(el);
+    const host = acHost(), hr = host.getBoundingClientRect(), r = el.getBoundingClientRect();
+    g.className = ta ? 'ta' : 'in';
+    g.style.font = cs.font || cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + '/' + cs.lineHeight + ' ' + cs.fontFamily;
+    g.innerHTML = '';
+    const mk = (cls, txt) => { const sp = document.createElement('span'); if (cls) sp.className = cls; sp.textContent = txt; g.appendChild(sp); };
+    mk('', el.value.slice(0, caret));
+    mk('sug', ins);
+    mk('', el.value.slice(caret) + '\u200b'); // 末尾零宽字符：让文本框末尾的换行在覆盖层里同样占一行
+    if (ta) {
+      g.style.padding = cs.padding;
+      g.style.left = (r.left - hr.left) + 'px';
+      g.style.top = (r.top - hr.top) + 'px';
+      g.style.width = r.width + 'px';
+      g.style.height = r.height + 'px';
+      g.style.lineHeight = '';
+      g.scrollTop = el.scrollTop;
+      g.scrollLeft = el.scrollLeft;
+    } else {
+      // 单行输入：文字从内容盒起排（左边框 + 左内边距），幽灵文本按控件高度垂直居中
+      g.style.padding = '0';
+      g.style.left = (r.left - hr.left + el.clientLeft + parseFloat(cs.paddingLeft || '0')) + 'px';
+      g.style.top = (r.top - hr.top) + 'px';
+      g.style.width = '';
+      g.style.height = '';
+      g.style.lineHeight = r.height + 'px';
+    }
+    g.style.display = 'block';
+  }
+
+  function acRenderDd() {
+    const el = ac.el, d = ac.dd;
+    d.innerHTML = '<div class="ac-hint">TAB 补全 · ↑↓ 切换</div>' + ac.cands
+      .map((c, i) => `<div class="ac-it${i === ac.idx ? ' on' : ''}" data-i="${i}">${esc(c)}</div>`).join('');
+    const host = acHost(), hr = host.getBoundingClientRect(), r = el.getBoundingClientRect();
+    // 在宿主（工具箱/浮层）边界内放置：下方不够就翻到上方，并按可用空间限高
+    d.style.display = 'block';
+    const below = hr.bottom - r.bottom - 6;
+    const above = r.top - hr.top - 6;
+    const useAbove = above > below;
+    d.style.maxHeight = Math.min(240, Math.max(96, useAbove ? above : below)) + 'px';
+    d.style.left = Math.max(4, Math.min(r.left - hr.left, hr.width - d.offsetWidth - 4)) + 'px';
+    d.style.top = (useAbove ? r.top - hr.top - d.offsetHeight - 2 : r.bottom - hr.top + 2) + 'px';
+    d.querySelectorAll('.ac-it').forEach((it) => {
+      it.addEventListener('mouseenter', () => {
+        ac.idx = +it.dataset.i;
+        d.querySelectorAll('.ac-it').forEach((x) => x.classList.toggle('on', x === it));
+        acRenderGhost();
+      });
+    });
+  }
+
+  // 应用候选：整词替换（含纠正大小写），派生 input 事件走既有的卡片/语句更新链路
+  function acApply() {
+    const el = ac.el;
+    if (!el || !ac.cands.length) return;
+    const full = ac.cands[ac.idx];
+    const s = el.selectionStart;
+    const start = Math.max(0, s - String(ac.ctx.token || '').length);
+    try { el.setRangeText(full, start, s, 'end'); } catch (e) { return; }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    acRefresh(); // 应用后通常进入下一级补齐（如字段名补完紧接运算符），或无候选收起
+  }
+
+  // TAB 应用、↑↓ 切换、回车应用（下拉开着时不触发编辑器的回车搜索）
+  function acKeydown(e) {
+    if (!ac.el || e.target !== ac.el || !ac.cands.length || !ac.dd || !ac.dd.isConnected || ac.dd.style.display === 'none') return;
+    const n = ac.cands.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      ac.idx = (ac.idx + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+      acRenderGhost();
+      acRenderDd();
+    } else if (e.key === 'Tab' && !e.altKey && !e.ctrlKey && !e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      acApply();
+    } else if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      e.stopPropagation();
+      acApply();
+    }
+  }
+
+  // Esc 只收起补齐、不连带关工具箱：window 捕获阶段先于 document 上的全局 Esc 处理
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && ac.dd && ac.dd.isConnected && ac.dd.style.display !== 'none') {
+      e.preventDefault();
+      e.stopPropagation();
+      acHideVisual();
+    }
+  }, true);
+  // 滚动 / 缩放后定位失效：直接收起（重新输入或移动光标会再次弹出）
+  window.addEventListener('scroll', acHideVisual, true);
+  window.addEventListener('resize', acHideVisual);
+
   // 顶层按 || 切分（跳过引号与括号内的 ||），结构与 splitTop 相同
   function splitOrTop(q) {
     const parts = [];
@@ -1998,8 +2254,10 @@
 
   function cardRowQ(card, r) {
     if (r.raw != null) return String(r.raw).trim();
-    if (!card.field) return r.value ? `"${r.value}"` : '';
-    return r.value === '' ? '' : `${card.field}${r.op}"${r.value}"`;
+    // 值里手打的包裹引号剥掉再统一加（值框存裸值；不剥会合成出双层引号 title=""x""）
+    const v = String(r.value == null ? '' : r.value).replace(/^"+|"+$/g, '');
+    if (!card.field) return v ? `"${v}"` : '';
+    return v === '' ? '' : `${card.field}${r.op}"${v}"`;
   }
 
   // 单卡内容（不加外层括号，存预设用）；或卡多值只在整句合成时才加括号
@@ -2260,21 +2518,20 @@
     };
   }
 
-  // 编辑器骨架（主编辑器与「管理预设」的内嵌编辑共用；sfx 让 datalist 的 id 不重复）
+  // 编辑器骨架（主编辑器与「管理预设」的内嵌编辑共用；sfx 预留实例级 id 后缀）
   function editorShellHtml(sfx, preset) {
-    const datalist = `<datalist id="fofa-edit-fields${sfx}">${EDITOR_FIELDS.map((f) => `<option value="${f}"></option>`).join('')}</datalist>`;
-    if (preset) return `${datalist}
+    if (preset) return `
       <div class="fx-e-cards"></div>
       <div class="fx-e-adds">
         <button class="fx-e-andb" title="新增一张字段卡">＋ 字段卡</button>
         <button class="fx-e-orb" title="在焦点卡追加一个值，继承运算符">＋ 值</button>
       </div>
-      <textarea class="fx-e-qtext" spellcheck="false" title="预设搜索串（可直接编辑）：改动实时解析成上方字段卡；卡片侧的改动也实时回写到这里。括号不配对会自动补全" placeholder="预设搜索串（可直接编辑，与上方卡片实时互通）"></textarea>
+      <textarea class="fx-e-qtext" spellcheck="false" title="预设搜索串（可直接编辑）：改动实时解析成上方字段卡；卡片侧的改动也实时回写到这里。括号不配对会自动补全；支持 TAB 补齐（字段/运算符/布尔·协议·日期值）" placeholder="预设搜索串（可直接编辑，与上方卡片实时互通）"></textarea>
       <div class="fx-e-pactions">
         <button class="fx-e-psave2" title="把当前内容写回该预设的搜索串">💾 保存到预设</button>
         <button class="fx-e-ccollapse" title="收起编辑（未保存的改动会丢弃）">收起</button>
       </div>`;
-    return `${datalist}
+    return `
       <div class="fx-e-quick">
         <button class="fx-e-qmonth" title="切换 after=一月内条件（再点一次移除，月末钳制）">📅 一个月内</button>
         <button class="fx-e-qcloud" title="切换 is_cloud=&quot;false&quot; 排除云服务（兼容识别 is_cloude 写法；再点一次移除）">☁️ 排除云服务</button>
@@ -2300,7 +2557,7 @@
         <button class="fx-e-search" title="按当前语句发起查询（编辑器内回车同）">🔍 搜索</button>
         <button class="fx-e-copy" title="复制当前语句">📋 复制</button>
       </div>
-      <div class="fx-e-hint">按字段分卡编辑：同字段的值集中在一张卡，卡内选 且(&&)/或(||)，或卡自动加括号 · 语句框可直接编辑并与卡片实时互通（括号自动配平）；单击语句中的条件可定位上方卡片，聚焦卡片会在语句框选中其文本 · 预设可快插/管理 · 回车搜索 · Alt+Q 开关工具箱</div>`;
+      <div class="fx-e-hint">按字段分卡编辑：同字段的值集中在一张卡，卡内选 且(&&)/或(||)，或卡自动加括号 · 语句框可直接编辑并与卡片实时互通（括号自动配平）；单击语句中的条件可定位上方卡片，聚焦卡片会在语句框选中其文本 · TAB 补齐（字段名/运算符/布尔·协议·日期值，↑↓ 切换）· 预设可快插/管理 · 回车搜索 · Alt+Q 开关工具箱</div>`;
   }
 
   /* 查询编辑器工厂：一份完整的卡片编辑器。卡片数组、焦点（卡/行）、上次页面语句、
@@ -2310,7 +2567,6 @@
     const st = { cards: [], focus: null, lastParsed: null, loaded: false, hlCi: null };
     const qtext = pane.querySelector('.fx-e-qtext');
     const cardsEl = pane.querySelector('.fx-e-cards');
-    const dl = 'fofa-edit-fields' + sfx;
 
     function renderCards() {
       if (!cardsEl) return;
@@ -2331,7 +2587,7 @@
         const or = c.join === '||' && (c.rows || []).length > 1;
         html += `<div class="fx-e-group${or ? ' or' : ''}" data-ci="${ci}">
           <div class="fx-e-chead">
-            <input class="fx-e-cfld" list="${dl}" data-ci="${ci}" data-f="field" value="${esc(c.field)}" placeholder="字段（留空=关键词）" spellcheck="false" title="字段名，如 country / product / icon_hash">
+            <input class="fx-e-cfld" data-ci="${ci}" data-f="field" value="${esc(c.field)}" placeholder="字段（留空=关键词）" spellcheck="false" title="字段名，如 country / product / icon_hash；输入时 TAB 补齐">
             <select class="fx-e-cjoin" data-ci="${ci}" data-f="join" title="卡内多值如何拼接">
               <option value="&&"${c.join === '&&' ? ' selected' : ''}>且 &&</option>
               <option value="||"${c.join === '||' ? ' selected' : ''}>或 ||</option>
@@ -2347,7 +2603,7 @@
               <option value="=="${r.op === '==' ? ' selected' : ''}>精确 ==</option>
               <option value="!="${r.op === '!=' ? ' selected' : ''}>排除 !=</option>
             </select>
-            <input class="val" data-ci="${ci}" data-ri="${ri}" data-f="value" value="${esc(r.value)}" spellcheck="false" placeholder="值">
+            <input class="val" data-ci="${ci}" data-ri="${ri}" data-f="value" value="${esc(r.value)}" spellcheck="false" placeholder="值" title="值；布尔/协议/日期字段输入时 TAB 补齐">
             <b class="fx-e-rdel" data-ci="${ci}" data-ri="${ri}" title="删除此值">✕</b>
           </div>`;
         });
@@ -2455,6 +2711,7 @@
         updateState(true);
       });
       // 失焦时把语句框规范化为合成语句（含括号补全），解析结果肉眼可见
+      //（末尾未写完的连接符按空段处理、随之清掉——规范化就是规范形）
       qtext.addEventListener('blur', () => {
         const q = cardsToQuery(st.cards);
         if (qtext.value !== q) qtext.value = q;
@@ -2469,6 +2726,13 @@
         const g = cardsEl && cardsEl.querySelector(`.fx-e-group[data-ci="${m.ci}"]`);
         if (g) g.scrollIntoView({ block: 'nearest' });
       });
+      // TAB 补齐（语句框）
+      qtext.addEventListener('focus', () => acFocus(qtext));
+      qtext.addEventListener('blur', acHide);
+      qtext.addEventListener('keydown', acKeydown);
+      qtext.addEventListener('input', acRefresh);
+      qtext.addEventListener('keyup', acRefresh);
+      qtext.addEventListener('click', acRefresh);
     }
 
     if (cardsEl) {
@@ -2545,6 +2809,16 @@
       const orb = pane.querySelector('.fx-e-orb');
       if (andb) andb.addEventListener('click', () => addItem('card'));
       if (orb) orb.addEventListener('click', () => addItem('row'));
+      // TAB 补齐（卡片字段/值输入，委托到卡片容器）
+      cardsEl.addEventListener('focusin', (e) => {
+        const t = acTarget(e.target);
+        if (t) acFocus(t);
+      });
+      cardsEl.addEventListener('focusout', acHide);
+      cardsEl.addEventListener('input', acRefresh);
+      cardsEl.addEventListener('keyup', acRefresh);
+      cardsEl.addEventListener('click', acRefresh);
+      cardsEl.addEventListener('keydown', acKeydown);
     }
 
     refresh();

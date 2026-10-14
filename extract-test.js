@@ -298,6 +298,41 @@ eq('或包含-裸词走整句括起', orCompose('title="x"', '"busybox"'), '(tit
 eq('或包含-空语句直接返回条件', orCompose('', 'country="PK"'), 'country="PK"');
 eq('或包含-不可解析条件整句括起', orCompose('title="x"', '(a && b)'), '(title="x") || (a && b)');
 
+// ===== TAB 补齐：上下文识别与候选（纯函数） =====
+const EF_SRC = /const EDITOR_FIELDS = (\[[\s\S]*?\]);/.exec(src)[1];
+const PROTO_SRC = /const PROTO_SET = (new Set\(\[[^\]]*\]\));/.exec(src)[1];
+const ACBF_SRC = /const AC_BOOLEAN_FIELDS = (new Set\(\[[^\]]*\]\));/.exec(src)[1];
+const valueCandidates = eval('(function(){const AC_BOOLEAN_FIELDS = ' + ACBF_SRC + ';const PROTO_SET = ' + PROTO_SRC + ';\n' + grabFn('fmtDate') + '\n' + grabFn('monthAgoOf') + '\n' + grabFn('valueCandidates') + '\nreturn valueCandidates;})()');
+const textCompleteContext = eval('(function(){const EDITOR_FIELDS = ' + EF_SRC + ';\n' + grabFn('textCompleteContext') + '\nreturn textCompleteContext;})()');
+const completeCandidates = eval('(function(){const EDITOR_FIELDS = ' + EF_SRC + ';const AC_BOOLEAN_FIELDS = ' + ACBF_SRC + ';const PROTO_SET = ' + PROTO_SRC + ';\n' + grabFn('fmtDate') + '\n' + grabFn('monthAgoOf') + '\n' + grabFn('valueCandidates') + '\n' + grabFn('completeCandidates') + '\nreturn completeCandidates;})()');
+
+eq('补齐-上下文-字段词根', JSON.stringify(textCompleteContext('country="PK" && cou', 20)), JSON.stringify({ kind: 'field', token: 'cou' }));
+eq('补齐-上下文-完整字段给运算符', JSON.stringify(textCompleteContext('title="x" && country', 22)), JSON.stringify({ kind: 'op', field: 'country', token: 'country' }));
+eq('补齐-上下文-带引号值', JSON.stringify(textCompleteContext('protocol="ht', 12)), JSON.stringify({ kind: 'value', field: 'protocol', token: 'ht', quoted: true, atClose: false }));
+eq('补齐-上下文-光标在闭引号上', JSON.stringify(textCompleteContext('protocol="http"', 14)), JSON.stringify({ kind: 'value', field: 'protocol', token: 'http', quoted: true, atClose: true }));
+eq('补齐-上下文-不带引号值', JSON.stringify(textCompleteContext('is_cloud=tr', 11)), JSON.stringify({ kind: 'value', field: 'is_cloud', token: 'tr', quoted: false, atClose: false }));
+eq('补齐-上下文-等号后空词根', JSON.stringify(textCompleteContext('is_cloud=', 9)), JSON.stringify({ kind: 'value', field: 'is_cloud', token: '', quoted: false, atClose: false }));
+eq('补齐-上下文-闭引号后不补', JSON.stringify(textCompleteContext('after="2026-08-29"', 18)), JSON.stringify({ kind: null, token: '' }));
+eq('补齐-上下文-开口引号可补', JSON.stringify(textCompleteContext('after="', 7)), JSON.stringify({ kind: 'value', field: 'after', token: '', quoted: true, atClose: false }));
+eq('补齐-上下文-单个&补&&', JSON.stringify(textCompleteContext('title="x" &', 11)), JSON.stringify({ kind: 'join', token: '&' }));
+eq('补齐-上下文-已完整&&不补', JSON.stringify(textCompleteContext('title="x" &&', 12)), JSON.stringify({ kind: null, token: '' }));
+eq('补齐-候选-字段前缀', JSON.stringify(completeCandidates(textCompleteContext('cou', 3))), JSON.stringify(['country']));
+eq('补齐-候选-字段空词根不给', completeCandidates(textCompleteContext('title="x" && ', 13)), []);
+eq('补齐-候选-布尔值空词根全给', JSON.stringify(completeCandidates(textCompleteContext('is_cloud=', 9))), JSON.stringify(['true', 'false']));
+eq('补齐-候选-协议补闭引号', JSON.stringify(completeCandidates(textCompleteContext('protocol="ht', 12))), JSON.stringify(['http"', 'https"']));
+eq('补齐-候选-光标在闭引号不加引号', JSON.stringify(completeCandidates(textCompleteContext('protocol="http"', 14))), JSON.stringify(['https']));
+eq('补齐-候选-运算符三件套', JSON.stringify(completeCandidates(textCompleteContext('country', 7))), JSON.stringify(['country="', 'country=="', 'country!=']));
+eq('补齐-候选-连接符翻倍', JSON.stringify(completeCandidates(textCompleteContext('a="1" |', 7))), JSON.stringify(['||']));
+eq('补齐-值-布尔字段', JSON.stringify(valueCandidates('is_cloud')), JSON.stringify(['true', 'false']));
+eq('补齐-值-协议含rtsp', valueCandidates('protocol').includes('rtsp'), true);
+eq('补齐-值-日期内置语法在前', valueCandidates('after').slice(0, 2), ['YESTERDAY', 'LastMonth']);
+eq('补齐-值-普通字段无候选', valueCandidates('title'), []);
+
+// ===== 值里手打的包裹引号：合成时剥掉再统一加（避免 title=""x"" 双层引号） =====
+eq('引号-值带双层引号合成剥离', cardsToQuery([{ field: 'title', join: '&&', rows: [{ op: '=', value: '"zyxel"' }] }]), 'title="zyxel"');
+eq('引号-值带未闭合引号也剥', cardsToQuery([{ field: 'title', join: '&&', rows: [{ op: '=', value: '"zyxel' }] }]), 'title="zyxel"');
+eq('引号-关键词卡同样剥', cardsToQuery([{ field: '', join: '&&', rows: [{ op: '', value: '"busybox"' }] }]), '"busybox"');
+
 // ===== 语句框点击 <-> 卡片高亮：cardTextSpans 位置映射 =====
 const scanLeaves = eval('(function(){' + grabFn('balanceParens') + '\n' + grabFn('parseCondOne') + '\n' + grabFn('scanLeaves') + '\nreturn scanLeaves;})()');
 const cardTextSpans = eval('(function(){' + grabFn('balanceParens') + '\n' + grabFn('parseCondOne') + '\n' + grabFn('scanLeaves') + '\n' + grabFn('cardTextSpans') + '\nreturn cardTextSpans;})()');
