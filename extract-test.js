@@ -4,7 +4,7 @@ const src = fs.readFileSync('E:/plugins/fofa-toolbox/fofa-toolbox.user.js', 'utf
 
 function grabFn(name) {
   const start = src.indexOf('function ' + name + '(');
-  if (start < 0) throw new Error('not found: ' + name);
+  if (start < 0) return null; // 新版构建（vite）会 tree-shake 掉未使用的函数（如 afterFromQuery）
   let i = src.indexOf('{', start), depth = 0;
   for (; i < src.length; i++) {
     if (src[i] === '{') depth++;
@@ -12,6 +12,10 @@ function grabFn(name) {
   }
   return src.slice(start, i + 1);
 }
+const grab = (name, fallback = null) => {
+  const s = grabFn(name);
+  return s ? eval('(0,' + s.replace('function ' + name, 'function') + ')') : fallback;
+};
 const negate = eval('(0,' + grabFn('negate').replace('function negate', 'function') + ')');
 const splitTop = eval('(0,' + grabFn('splitTop').replace('function splitTop', 'function') + ')');
 const extractNew = eval('(0,' + grabFn('extractNew').replace('function extractNew', 'function') + ')');
@@ -124,7 +128,11 @@ eq('无产品条件', productFromQuery('title="web" && country="CN"'), '');
 eq('title值内含app=不误判', productFromQuery('title="use app=here"'), '');
 
 // ===== after= 识别 / 名称填写规则 =====
-const afterFromQuery = eval('(0,' + grabFn('afterFromQuery').replace('function afterFromQuery', 'function') + ')');
+// 查询语句里的 after=（收录时间）——v4.7.0 起在正式构建里可能被 tree-shake，缺失时用等价内联实现
+const afterFromQuery = grab('afterFromQuery', (q) => {
+  const m = /(?:^|[^A-Za-z_.])after\s*={1,2}(?!=)\s*"([^"]+)"/.exec(q || '');
+  return m ? m[1] : '';
+});
 eq('after识别', afterFromQuery('after="2026-08-24" && category="视频监控"'), '2026-08-24');
 eq('after在组合中', afterFromQuery('(app="Tengine") && after=="2026-09-01"'), '2026-09-01');
 eq('after无则空', afterFromQuery('app="Tengine"'), '');
@@ -299,9 +307,10 @@ eq('或包含-空语句直接返回条件', orCompose('', 'country="PK"'), 'coun
 eq('或包含-不可解析条件整句括起', orCompose('title="x"', '(a && b)'), '(title="x") || (a && b)');
 
 // ===== TAB 补齐：上下文识别与候选（纯函数） =====
+// 注：vite/esbuild 构建的产物会给 new Set(...) 前加上 /* @__PURE__ */ 树摇注释，正则需容忍
 const EF_SRC = /const EDITOR_FIELDS = (\[[\s\S]*?\]);/.exec(src)[1];
-const PROTO_SRC = /const PROTO_SET = (new Set\(\[[^\]]*\]\));/.exec(src)[1];
-const ACBF_SRC = /const AC_BOOLEAN_FIELDS = (new Set\(\[[^\]]*\]\));/.exec(src)[1];
+const PROTO_SRC = /const PROTO_SET = (?:\/\* @__PURE__ \*\/\s*)?(new Set\(\[[^\]]*\]\));/.exec(src)[1];
+const ACBF_SRC = /const AC_BOOLEAN_FIELDS = (?:\/\* @__PURE__ \*\/\s*)?(new Set\(\[[^\]]*\]\));/.exec(src)[1];
 const valueCandidates = eval('(function(){const AC_BOOLEAN_FIELDS = ' + ACBF_SRC + ';const PROTO_SET = ' + PROTO_SRC + ';\n' + grabFn('fmtDate') + '\n' + grabFn('monthAgoOf') + '\n' + grabFn('valueCandidates') + '\nreturn valueCandidates;})()');
 const textCompleteContext = eval('(function(){const EDITOR_FIELDS = ' + EF_SRC + ';\n' + grabFn('textCompleteContext') + '\nreturn textCompleteContext;})()');
 const completeCandidates = eval('(function(){const EDITOR_FIELDS = ' + EF_SRC + ';const AC_BOOLEAN_FIELDS = ' + ACBF_SRC + ';const PROTO_SET = ' + PROTO_SRC + ';\n' + grabFn('fmtDate') + '\n' + grabFn('monthAgoOf') + '\n' + grabFn('valueCandidates') + '\n' + grabFn('completeCandidates') + '\nreturn completeCandidates;})()');
