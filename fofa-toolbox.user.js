@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FOFA 工具箱
 // @namespace    fofa.toolbox
-// @version      4.7.0
+// @version      4.7.1
 // @description  FOFA 工具箱：FOFA风格深色/浅色模式一键切换；右键任意元素（组件/favicon/国旗/世界地图/相关Icon/各排名条目…）排除或包含该条件并在新标签打开；Alt+拖拽框选批量排除；Alt+Q 工具箱=指纹收藏库（表格编辑、JSON/CSV 导出导入）+ 查询编辑器（结构化拆分当前语句、Alt+A/O 快捷且/或、一键一月内/排除云服务并搜索）+ 知识库（厂商贴牌关系、Server/Title、可粘贴产品截图）。Shift+右键 = 原生菜单
 // @match        *://fofa.info/*
 // @match        *://*.fofa.info/*
@@ -18,7 +18,7 @@
   'use strict';
 
   const MAX_TEXT_LEN = 60;
-  const VER = "4.7.0";
+  const VER = "4.7.1";
   const COUNTRY_ZH = {
     "中国": "CN",
     "美国": "US",
@@ -458,7 +458,15 @@
     acRefresh();
   }
   function acKeydown(e) {
-    if (!ac.el || e.target !== ac.el || !ac.cands.length || !ac.dd || !ac.dd.isConnected || ac.dd.style.display === "none") return;
+    if (!ac.el || e.target !== ac.el) return;
+    const open = !!ac.cands.length && !!ac.dd && ac.dd.isConnected && ac.dd.style.display !== "none";
+    if (e.key === "Tab" && !e.altKey && !e.ctrlKey && !e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (open) acApply();
+      return;
+    }
+    if (!open) return;
     const n = ac.cands.length;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
@@ -466,10 +474,6 @@
       ac.idx = (ac.idx + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
       acRenderGhost();
       acRenderDd();
-    } else if (e.key === "Tab" && !e.altKey && !e.ctrlKey && !e.shiftKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      acApply();
     } else if (e.key === "Enter" && !e.altKey && !e.ctrlKey && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       e.stopPropagation();
@@ -2253,10 +2257,10 @@ html.fx-icons-off .fx-fb{display:inline}
       toolboxStyle.textContent = `
 /* FOFA 风格：以用户提供的首页截图为参考（背景 #040c1f / 卡片 #0d1527 / 青色重点）。 */
 :root {
---fx-surface:#fff;--fx-layer:#f6f8fa;--fx-hover:#eef1f4;--fx-highlight:#fffdf5;
+--fx-surface:#fff;--fx-layer:#f6f8fa;--fx-hover:#eef1f4;--fx-highlight:#e9fbfb;
 --fx-text:#24292f;--fx-muted:#57606a;--fx-subtle:#8b949e;--fx-faint:#b8c0c8;
 --fx-border:#d0d7de;--fx-line:#eef1f4;
---fx-accent:#f1961f;--fx-accent-hover:#ffab2e;--fx-accent-strong:#b25e09;--fx-accent-ink:#fff;
+--fx-accent:#05B5B6;--fx-accent-hover:#0ACBCB;--fx-accent-strong:#047F80;--fx-accent-ink:#032527;
 --fx-success:#12804b;--fx-success-border:#b8dec6;--fx-danger:#c24136;
 }
 :root[data-fofa-toolbox-theme="dark"] {
@@ -2572,39 +2576,60 @@ ${ICON_CSS}`;
   function initStyleGuard() {
     new MutationObserver(() => injectStyle()).observe(document.head || document.documentElement, { childList: true });
   }
+  const FOFA_THEME_SVG = '<svg viewBox="0 0 18 15" width="13" height="11" style="vertical-align:-.12em" aria-hidden="true"><path fill="currentColor" d="M9.057 14.976c-3.094 0-4.995-.44-5.81-1.344-.431-.477-.41-.927-.393-1.053.01-.112.298-3.556.542-5.162-.089-.058-.276-.13-.383-.175a3 3 0 0 1-.266-.11c-.36-.164-1.105-.525-1.105-.525C.716 6.191.168 5.662.03 5.044c-.108-.494.077-.92.285-1.157a1 1 0 0 1 .08-.077L4.75.182a.775.775 0 0 1 1.225.33c.477 1.381 1.86 1.587 2.644 1.587.208 0 .34-.016.342-.016a1 1 0 0 1 .202 0s.13.016.33.016c.768 0 2.124-.206 2.594-1.585a.76.76 0 0 1 .525-.484.78.78 0 0 1 .704.157l4.29 3.628a1 1 0 0 1 .08.077c.206.234.388.66.28 1.154-.134.616-.676 1.142-1.608 1.566 0 0-.72.354-1.069.517q-.12.054-.264.11c-.105.043-.29.115-.376.174.242 1.62.525 5.054.537 5.201.012.094.033.545-.4 1.025-.81.902-2.685 1.337-5.729 1.337M4.388 12.63c.13.15.94.85 4.67.85 3.686 0 4.472-.704 4.592-.847-.058-.672-.314-3.657-.523-5.03-.175-1.155.91-1.585 1.32-1.747q.099-.038.183-.075c.343-.159 1.057-.51 1.057-.51.47-.213.661-.386.736-.473l-3.36-2.846c-1.012 1.465-2.769 1.643-3.57 1.643-.189 0-.342-.01-.436-.019a6 6 0 0 1-.44.019c-.813 0-2.594-.18-3.617-1.653L1.58 4.796c.078.089.27.257.726.46.021.01.745.361 1.092.523q.084.037.185.075c.415.161 1.512.592 1.335 1.748-.213 1.39-.48 4.424-.53 5.028"/></svg>';
   const THEME_KEY = "fofa-toolbox-theme";
+  let toolboxMode = "auto";
   let toolboxTheme = "dark";
   try {
-    toolboxTheme = localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
+    const saved = localStorage.getItem(THEME_KEY);
+    toolboxMode = saved === "dark" || saved === "light" ? saved : "auto";
   } catch (e) {
+  }
+  function fofaTheme() {
+    const cl = document.documentElement.classList;
+    if (cl.contains("light")) return "light";
+    if (cl.contains("dark")) return "dark";
+    const m = /(?:^|;\s*)fofa_theme=(dark|light)/.exec(document.cookie || "");
+    return m ? m[1] : "dark";
+  }
+  function effectiveTheme() {
+    return toolboxMode === "auto" ? fofaTheme() : toolboxMode;
   }
   function syncThemeButton() {
     const btn = document.querySelector("#fofa-toolbox-box .fx-theme-toggle");
     if (!btn) return;
     const dark = toolboxTheme === "dark";
-    btn.innerHTML = ic("theme") + (dark ? " 浅色" : " 深色");
-    btn.title = dark ? "切换为浅色模式" : "切换为 FOFA 风格深色模式";
+    const label = toolboxMode === "auto" ? `跟随·${dark ? "深" : "浅"}` : dark ? "深色" : "浅色";
+    btn.innerHTML = FOFA_THEME_SVG + " " + label;
+    btn.title = toolboxMode === "auto" ? `外观：跟随 FOFA 页面皮肤（当前${dark ? "深色" : "浅色"}），点击改为深色` : `外观：${dark ? "FOFA 风格深色" : "浅色"}，点击${dark ? "改为浅色" : "恢复跟随 FOFA"}`;
     btn.setAttribute("aria-label", btn.title);
     btn.setAttribute("aria-pressed", String(dark));
   }
   function applyToolboxTheme() {
+    toolboxTheme = effectiveTheme();
     const root = document.documentElement;
     if (root && typeof root.setAttribute === "function") root.setAttribute("data-fofa-toolbox-theme", toolboxTheme);
     syncThemeButton();
   }
-  function setToolboxTheme(next) {
-    toolboxTheme = next === "light" ? "light" : "dark";
+  function setToolboxTheme(mode) {
+    toolboxMode = mode === "dark" || mode === "light" ? mode : "auto";
     try {
-      localStorage.setItem(THEME_KEY, toolboxTheme);
+      localStorage.setItem(THEME_KEY, toolboxMode);
     } catch (e) {
     }
     applyToolboxTheme();
   }
+  function cycleToolboxTheme() {
+    setToolboxTheme(toolboxMode === "auto" ? "dark" : toolboxMode === "dark" ? "light" : "auto");
+  }
   function initTheme() {
     applyToolboxTheme();
+    new MutationObserver(() => {
+      if (toolboxMode === "auto") applyToolboxTheme();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
     window.addEventListener("storage", (e) => {
       if (e.key !== THEME_KEY) return;
-      toolboxTheme = e.newValue === "light" ? "light" : "dark";
+      toolboxMode = e.newValue === "dark" || e.newValue === "light" ? e.newValue : "auto";
       applyToolboxTheme();
     });
   }
@@ -2715,7 +2740,7 @@ ${ICON_CSS}`;
     attachLibEvents(panel.querySelector(".fx-t-pane-lib"));
     buildEditor(panel.querySelector(".fx-t-pane-edit"));
     buildKb(panel.querySelector(".fx-t-pane-kb"));
-    panel.querySelector(".fx-theme-toggle").addEventListener("click", () => setToolboxTheme(toolboxTheme === "dark" ? "light" : "dark"));
+    panel.querySelector(".fx-theme-toggle").addEventListener("click", () => cycleToolboxTheme());
     syncThemeButton();
     panel.querySelector(".fx-l-close").addEventListener("click", () => closeToolbox(true));
     panel.querySelectorAll(".fx-t-tab").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
